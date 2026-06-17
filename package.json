@@ -1,0 +1,10 @@
+{
+  "name": "dglviz",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c \"bgBlue.white,bgCyan.black\" \"cd backend && uv run uvicorn main:app --reload --port 8000\" \"cd frontend && npm run dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

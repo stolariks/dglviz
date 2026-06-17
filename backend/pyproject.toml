@@ -1,0 +1,22 @@
+[project]
+name = "dglviz-backend"
+version = "0.1.0"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "python-multipart>=0.0.6",
+    "numpy>=1.21.0",
+    "torch==2.4.0",
+    "dgl==2.4.0"
+]
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[tool.uv]
+find-links = ["https://data.dgl.ai/wheels/torch-2.4/cu124/repo.html"]
+package = false
+
