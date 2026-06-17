@@ -1,4 +1,4 @@
-export type ColormapName = 'jet' | 'viridis' | 'inferno' | 'plasma' | 'coolwarm';
+export type ColormapName = 'jet' | 'viridis' | 'inferno' | 'plasma' | 'coolwarm' | 'categorical';
 
 type RGB = [number, number, number];
 type KeyPoint = [number, RGB];
@@ -64,9 +64,30 @@ export const COLORMAPS: Record<ColormapName, (t: number) => RGB> = {
     [0.750, [0.957, 0.604, 0.486]],
     [1.000, [0.706, 0.016, 0.150]],
   ]),
+
+  categorical: (() => {
+    // tab20 palette — 20 perceptually distinct colours
+    const palette: RGB[] = [
+      [0.122, 0.467, 0.706], [0.682, 0.780, 0.910],
+      [1.000, 0.498, 0.055], [1.000, 0.733, 0.471],
+      [0.173, 0.627, 0.173], [0.596, 0.875, 0.541],
+      [0.839, 0.153, 0.157], [1.000, 0.596, 0.588],
+      [0.580, 0.404, 0.741], [0.773, 0.694, 0.835],
+      [0.549, 0.337, 0.294], [0.769, 0.612, 0.580],
+      [0.890, 0.467, 0.761], [0.969, 0.714, 0.824],
+      [0.498, 0.498, 0.498], [0.780, 0.780, 0.780],
+      [0.737, 0.741, 0.133], [0.859, 0.859, 0.553],
+      [0.090, 0.745, 0.812], [0.620, 0.855, 0.898],
+    ];
+    return (t: number): RGB => {
+      t = Math.max(0, Math.min(1, t));
+      const idx = Math.round(t * (palette.length - 1)) % palette.length;
+      return palette[idx];
+    };
+  })(),
 };
 
-export const COLORMAP_NAMES: ColormapName[] = ['jet', 'viridis', 'inferno', 'plasma', 'coolwarm'];
+export const COLORMAP_NAMES: ColormapName[] = ['jet', 'viridis', 'inferno', 'plasma', 'coolwarm', 'categorical'];
 
 export function drawColorbar(canvas: HTMLCanvasElement, cmName: ColormapName): void {
   const ctx = canvas.getContext('2d')!;

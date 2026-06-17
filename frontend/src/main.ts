@@ -15,6 +15,8 @@ let edgeColormap: ColormapName = 'jet';
 let pointSize = 2;
 let nodeOpacity = 1.0;
 let edgeOpacity = 0.55;
+let solidNodeColor = '#5aa6ff';
+let solidEdgeColor = '#666688';
 
 const queryReq: QueryRequest = {
   position_source: { key: 'feat', x_col: 0, y_col: 1, z_col: 2 },
@@ -205,6 +207,19 @@ function makeFeaturePicker(
   wrap.appendChild(keySelect);
   wrap.appendChild(idxInput);
   return wrap;
+}
+
+function makeColorPickerRow(label: string, initial: string, onChange: (v: string) => void): HTMLDivElement {
+  const r = row(label);
+  const inp = document.createElement('input');
+  inp.type = 'color';
+  inp.value = initial;
+  inp.style.flex = '1';
+  inp.style.height = '28px';
+  inp.style.cursor = 'pointer';
+  inp.addEventListener('input', () => onChange(inp.value));
+  r.appendChild(inp);
+  return r;
 }
 
 function makeOpacityRow(label: string, initial: number, onChange: (v: number) => void): HTMLDivElement {
@@ -523,23 +538,32 @@ function buildPositionSection(info: GraphInfo): HTMLElement {
 function buildNodeColorSection(info: GraphInfo): HTMLElement {
   const [details, body] = makeSection('Node color', true);
 
-  const picker = makeFeaturePicker('node', '— none —',
-    queryReq.node_color?.key ?? null,
-    queryReq.node_color?.index ?? null,
-    (k, idx) => {
-      queryReq.node_color = k ? { key: k, index: idx } : null;
-    });
-  body.appendChild(row('Feature', picker));
+  const hasFeature = queryReq.node_color !== null;
+
+  const solidRow = makeColorPickerRow('Solid color', solidNodeColor, (v) => { solidNodeColor = v; });
+  solidRow.style.display = hasFeature ? 'none' : 'flex';
 
   const cmSelect = makeSelect(COLORMAP_NAMES, nodeColormap, (v) => {
     nodeColormap = v as ColormapName;
     const bar = document.getElementById('colorbar')!;
     if (bar.style.display !== 'none') {
-      const cbCanvas = document.getElementById('colorbar-canvas') as HTMLCanvasElement;
-      drawColorbar(cbCanvas, nodeColormap);
+      drawColorbar(document.getElementById('colorbar-canvas') as HTMLCanvasElement, nodeColormap);
     }
   });
-  body.appendChild(row('Colormap', cmSelect));
+  const cmRow = row('Colormap', cmSelect);
+  cmRow.style.display = hasFeature ? 'flex' : 'none';
+
+  const picker = makeFeaturePicker('node', '— none —',
+    queryReq.node_color?.key ?? null,
+    queryReq.node_color?.index ?? null,
+    (k, idx) => {
+      queryReq.node_color = k ? { key: k, index: idx } : null;
+      solidRow.style.display = k ? 'none' : 'flex';
+      cmRow.style.display = k ? 'flex' : 'none';
+    });
+  body.appendChild(row('Feature', picker));
+  body.appendChild(solidRow);
+  body.appendChild(cmRow);
 
   body.appendChild(makeOpacityRow('Node opacity', nodeOpacity, (v) => {
     nodeOpacity = v;
@@ -568,20 +592,31 @@ function buildEdgeSection(info: GraphInfo): HTMLElement {
   edgeBody.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:4px';
   edgeBody.style.display = queryReq.show_edges ? 'flex' : 'none';
 
+  const hasEdgeFeature = queryReq.edge_color !== null && Object.keys(info.edata).length > 0;
+
+  const edgeSolidRow = makeColorPickerRow('Solid color', solidEdgeColor, (v) => { solidEdgeColor = v; });
+  edgeSolidRow.style.display = hasEdgeFeature ? 'none' : 'flex';
+
+  const edgeCmSelect = makeSelect(COLORMAP_NAMES, edgeColormap, (v) => {
+    edgeColormap = v as ColormapName;
+  });
+  const edgeCmRow = row('Colormap', edgeCmSelect);
+  edgeCmRow.style.display = hasEdgeFeature ? 'flex' : 'none';
+
   if (Object.keys(info.edata).length > 0) {
     const picker = makeFeaturePicker('edge', '— none —',
       queryReq.edge_color?.key ?? null,
       queryReq.edge_color?.index ?? null,
       (k, idx) => {
         queryReq.edge_color = k ? { key: k, index: idx } : null;
+        edgeSolidRow.style.display = k ? 'none' : 'flex';
+        edgeCmRow.style.display = k ? 'flex' : 'none';
       });
     edgeBody.appendChild(row('Color by', picker));
   }
 
-  const edgeCmSelect = makeSelect(COLORMAP_NAMES, edgeColormap, (v) => {
-    edgeColormap = v as ColormapName;
-  });
-  edgeBody.appendChild(row('Colormap', edgeCmSelect));
+  edgeBody.appendChild(edgeSolidRow);
+  edgeBody.appendChild(edgeCmRow);
 
   edgeBody.appendChild(makeOpacityRow('Edge opacity', edgeOpacity, (v) => {
     edgeOpacity = v;
@@ -749,7 +784,7 @@ async function runQuery(): Promise<void> {
   try {
     const result = await api.query(activeGraph, queryReq);
 
-    const opts: RenderOptions = { nodeCm: nodeColormap, edgeCm: edgeColormap, pointSize, nodeOpacity, edgeOpacity };
+    const opts: RenderOptions = { nodeCm: nodeColormap, edgeCm: edgeColormap, pointSize, nodeOpacity, edgeOpacity, solidNodeColor, solidEdgeColor };
     renderer.update(result, opts);
 
     const edgeInfo = result.edges.count > 0

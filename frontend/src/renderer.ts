@@ -9,6 +9,13 @@ export interface RenderOptions {
   pointSize: number;
   nodeOpacity: number;
   edgeOpacity: number;
+  solidNodeColor: string;  // hex, used when no node feature is mapped
+  solidEdgeColor: string;  // hex, used when no edge feature is mapped
+}
+
+function hexToRGB(hex: string): [number, number, number] {
+  const v = parseInt(hex.replace('#', ''), 16);
+  return [(v >> 16 & 0xff) / 255, (v >> 8 & 0xff) / 255, (v & 0xff) / 255];
 }
 
 export class GraphRenderer {
@@ -100,7 +107,7 @@ export class GraphRenderer {
       if (data.node_colors !== null) {
         [r, g, b] = nodeCm(data.node_colors[i]);
       } else {
-        [r, g, b] = [0.35, 0.65, 1.0];
+        [r, g, b] = hexToRGB(opts.solidNodeColor);
       }
       colArr[i * 3]     = r;
       colArr[i * 3 + 1] = g;
@@ -144,7 +151,7 @@ export class GraphRenderer {
         if (eColors !== null) {
           [r, g, b] = edgeCm(eColors[i]);
         } else {
-          [r, g, b] = [0.4, 0.4, 0.5];
+          [r, g, b] = hexToRGB(opts.solidEdgeColor);
         }
         eColArr[i * 6]     = r; eColArr[i * 6 + 1] = g; eColArr[i * 6 + 2] = b;
         eColArr[i * 6 + 3] = r; eColArr[i * 6 + 4] = g; eColArr[i * 6 + 5] = b;
