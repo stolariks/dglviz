@@ -19,6 +19,20 @@ function makeColormap(keys: KeyPoint[]): (t: number) => RGB {
   };
 }
 
+// tab10 — 10 perceptually distinct colours used for categorical mapping
+export const CATEGORICAL_PALETTE: RGB[] = [
+  [0.122, 0.467, 0.706],  // blue
+  [1.000, 0.498, 0.055],  // orange
+  [0.173, 0.627, 0.173],  // green
+  [0.839, 0.153, 0.157],  // red
+  [0.580, 0.404, 0.741],  // purple
+  [0.549, 0.337, 0.294],  // brown
+  [0.890, 0.467, 0.761],  // pink
+  [0.498, 0.498, 0.498],  // gray
+  [0.737, 0.741, 0.133],  // yellow-green
+  [0.090, 0.745, 0.812],  // cyan
+];
+
 export const COLORMAPS: Record<ColormapName, (t: number) => RGB> = {
   jet: makeColormap([
     [0.000, [0.000, 0.000, 0.500]],
@@ -65,29 +79,39 @@ export const COLORMAPS: Record<ColormapName, (t: number) => RGB> = {
     [1.000, [0.706, 0.016, 0.150]],
   ]),
 
-  categorical: (() => {
-    // tab20 palette — 20 perceptually distinct colours
-    const palette: RGB[] = [
-      [0.122, 0.467, 0.706], [0.682, 0.780, 0.910],
-      [1.000, 0.498, 0.055], [1.000, 0.733, 0.471],
-      [0.173, 0.627, 0.173], [0.596, 0.875, 0.541],
-      [0.839, 0.153, 0.157], [1.000, 0.596, 0.588],
-      [0.580, 0.404, 0.741], [0.773, 0.694, 0.835],
-      [0.549, 0.337, 0.294], [0.769, 0.612, 0.580],
-      [0.890, 0.467, 0.761], [0.969, 0.714, 0.824],
-      [0.498, 0.498, 0.498], [0.780, 0.780, 0.780],
-      [0.737, 0.741, 0.133], [0.859, 0.859, 0.553],
-      [0.090, 0.745, 0.812], [0.620, 0.855, 0.898],
-    ];
-    return (t: number): RGB => {
-      t = Math.max(0, Math.min(1, t));
-      const idx = Math.round(t * (palette.length - 1)) % palette.length;
-      return palette[idx];
-    };
-  })(),
+  // Fallback used only for the colorbar preview; actual rendering uses buildCategoricalMapper
+  categorical: (t: number): RGB => {
+    const idx = Math.round(Math.max(0, Math.min(1, t)) * (CATEGORICAL_PALETTE.length - 1));
+    return CATEGORICAL_PALETTE[idx];
+  },
 };
 
 export const COLORMAP_NAMES: ColormapName[] = ['jet', 'viridis', 'inferno', 'plasma', 'coolwarm', 'categorical'];
+
+/**
+ * Builds a categorical colormap function by scanning the actual normalised values
+ * and mapping each unique rounded integer to its own palette slot (by sorted rank).
+ * Supports any integer values, not just 0-based indices; cycles after 10 categories.
+ */
+export function buildCategoricalMapper(
+  normalizedValues: number[],
+  colorRange: [number, number],
+): (t: number) => RGB {
+  const [vMin, vMax] = colorRange;
+  const span = vMax - vMin;
+
+  const seen = new Set<number>();
+  for (const t of normalizedValues) seen.add(Math.round(t * span + vMin));
+
+  const rankMap = new Map(
+    Array.from(seen).sort((a, b) => a - b).map((v, i) => [v, i % CATEGORICAL_PALETTE.length])
+  );
+
+  return (t: number): RGB => {
+    const raw = Math.round(t * span + vMin);
+    return CATEGORICAL_PALETTE[rankMap.get(raw) ?? 0];
+  };
+}
 
 export function drawColorbar(canvas: HTMLCanvasElement, cmName: ColormapName): void {
   const ctx = canvas.getContext('2d')!;

@@ -760,7 +760,7 @@ function buildROISection(info: GraphInfo): HTMLElement {
 function buildRenderSection(): HTMLElement {
   const [details, body] = makeSection('Render options', false);
 
-  body.appendChild(makeCheckbox(false, 'Show axes', (v) => renderer.setAxesVisible(v)));
+  body.appendChild(makeCheckbox(false, 'Show axis grid', (v) => renderer.setAxesVisible(v)));
 
   const fitBtn = document.createElement('button');
   fitBtn.className = 'btn-sm';
