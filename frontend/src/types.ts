@@ -74,11 +74,11 @@ export interface QueryRequest {
   position_source: PositionSource;
   node_color: FeatureSelector | null;
   node_filter: FilterConfig;
-  node_subsample: number;
+  node_subsample_factor: number;  // 1 = all nodes, N = keep 1/N
   show_edges: boolean;
   edge_color: FeatureSelector | null;
   edge_filter: FilterConfig;
-  edge_subsample: number;
+  edge_subsample_factor: number;  // 1 = all edges, N = keep 1/N
   roi: ROIConfig;
 }
 

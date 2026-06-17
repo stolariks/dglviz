@@ -103,11 +103,12 @@ def query(name: str, req: QueryRequest) -> dict:
     if fmask is not None:
         mask &= fmask
 
-    # ── subsample ─────────────────────────────────────────────────────────────
+    # ── subsample (last step after all filtering) ─────────────────────────────
     node_indices = torch.where(mask)[0]
     num_after_filter = int(len(node_indices))
-    if len(node_indices) > req.node_subsample:
-        perm = torch.randperm(len(node_indices))[: req.node_subsample]
+    n_to_show = max(1, num_after_filter // req.node_subsample_factor)
+    if n_to_show < num_after_filter:
+        perm = torch.randperm(num_after_filter)[:n_to_show]
         node_indices = node_indices[perm]
 
     # ── node colors ───────────────────────────────────────────────────────────
@@ -140,8 +141,9 @@ def query(name: str, req: QueryRequest) -> dict:
             edge_indices = torch.where(edge_mask)[0]
             total_edges = int(len(edge_indices))
 
-            if len(edge_indices) > req.edge_subsample:
-                perm = torch.randperm(len(edge_indices))[: req.edge_subsample]
+            e_to_show = max(1, total_edges // req.edge_subsample_factor)
+            if e_to_show < total_edges:
+                perm = torch.randperm(total_edges)[:e_to_show]
                 edge_indices = edge_indices[perm]
 
             sel_src = src_all[edge_indices]

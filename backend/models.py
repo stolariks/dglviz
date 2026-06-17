@@ -56,9 +56,9 @@ class QueryRequest(BaseModel):
     position_source: PositionSource = Field(default_factory=PositionSource)
     node_color: Optional[FeatureSelector] = None
     node_filter: FilterConfig = Field(default_factory=FilterConfig)
-    node_subsample: int = Field(default=10000, gt=0, le=500000)
+    node_subsample_factor: int = Field(default=1, ge=1)  # 1 = all nodes, N = keep 1/N
     show_edges: bool = False
     edge_color: Optional[FeatureSelector] = None
     edge_filter: FilterConfig = Field(default_factory=FilterConfig)
-    edge_subsample: int = Field(default=50000, gt=0, le=500000)
+    edge_subsample_factor: int = Field(default=1, ge=1)  # 1 = all edges, N = keep 1/N
     roi: ROIConfig = Field(default_factory=ROIConfig)

@@ -17,11 +17,11 @@ const queryReq: QueryRequest = {
   position_source: { key: 'feat', x_col: 0, y_col: 1, z_col: 2 },
   node_color: null,
   node_filter: { enabled: false, advanced: false, simple: null, expression: null },
-  node_subsample: 10000,
+  node_subsample_factor: 1,
   show_edges: false,
   edge_color: null,
   edge_filter: { enabled: false, advanced: false, simple: null, expression: null },
-  edge_subsample: 50000,
+  edge_subsample_factor: 1,
   roi: { enabled: false, type: 'box', box: null, sphere: null },
 };
 
@@ -546,10 +546,11 @@ function buildEdgeSection(info: GraphInfo): HTMLElement {
     edgeBody.appendChild(row('Color by', picker));
   }
 
-  edgeBody.appendChild(row('Max edges',
-    makeNumInput(queryReq.edge_subsample, 1000, 500000, 1000, (v) => {
-      queryReq.edge_subsample = v;
-    })));
+  const edgeFactorInp = makeNumInput(queryReq.edge_subsample_factor, 1, 1e9, 1, (v) => {
+    queryReq.edge_subsample_factor = Math.max(1, Math.round(v));
+  });
+  edgeFactorInp.title = '1 = all edges, 2 = 50%, 100 = 1%, …';
+  edgeBody.appendChild(row('Edge factor', edgeFactorInp));
 
   body.appendChild(edgeBody);
   return details;
@@ -558,10 +559,16 @@ function buildEdgeSection(info: GraphInfo): HTMLElement {
 function buildSamplingSection(): HTMLElement {
   const [details, body] = makeSection('Sampling', true);
 
-  body.appendChild(row('Max nodes',
-    makeNumInput(queryReq.node_subsample, 100, 500000, 1000, (v) => {
-      queryReq.node_subsample = v;
-    })));
+  const hint = document.createElement('div');
+  hint.style.cssText = 'font-size:10px;color:var(--text-dim);margin-bottom:2px';
+  hint.textContent = '1 = all, 2 = 50%, 100 = 1%  (applied after all filters)';
+  body.appendChild(hint);
+
+  const nodeFactorInp = makeNumInput(queryReq.node_subsample_factor, 1, 1e9, 1, (v) => {
+    queryReq.node_subsample_factor = Math.max(1, Math.round(v));
+  });
+  nodeFactorInp.title = '1 = all nodes, 2 = 50%, N = keep 1/N of filtered nodes';
+  body.appendChild(row('Node factor', nodeFactorInp));
 
   return details;
 }
