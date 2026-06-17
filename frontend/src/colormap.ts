@@ -1,4 +1,4 @@
-export type ColormapName = 'viridis' | 'inferno' | 'plasma' | 'coolwarm';
+export type ColormapName = 'jet' | 'viridis' | 'inferno' | 'plasma' | 'coolwarm';
 
 type RGB = [number, number, number];
 type KeyPoint = [number, RGB];
@@ -20,6 +20,15 @@ function makeColormap(keys: KeyPoint[]): (t: number) => RGB {
 }
 
 export const COLORMAPS: Record<ColormapName, (t: number) => RGB> = {
+  jet: makeColormap([
+    [0.000, [0.000, 0.000, 0.500]],
+    [0.125, [0.000, 0.000, 1.000]],
+    [0.375, [0.000, 1.000, 1.000]],
+    [0.625, [1.000, 1.000, 0.000]],
+    [0.875, [1.000, 0.000, 0.000]],
+    [1.000, [0.500, 0.000, 0.000]],
+  ]),
+
   viridis: makeColormap([
     [0.000, [0.267, 0.005, 0.329]],
     [0.125, [0.283, 0.141, 0.458]],
@@ -56,6 +65,8 @@ export const COLORMAPS: Record<ColormapName, (t: number) => RGB> = {
     [1.000, [0.706, 0.016, 0.150]],
   ]),
 };
+
+export const COLORMAP_NAMES: ColormapName[] = ['jet', 'viridis', 'inferno', 'plasma', 'coolwarm'];
 
 export function drawColorbar(canvas: HTMLCanvasElement, cmName: ColormapName): void {
   const ctx = canvas.getContext('2d')!;

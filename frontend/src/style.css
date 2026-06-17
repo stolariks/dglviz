@@ -321,6 +321,17 @@ button {
   pointer-events: none;
 }
 
+#edge-colorbar {
+  position: absolute;
+  right: 110px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+}
+
 .cb-label {
   font-size: 10px;
   color: var(--text-dim);

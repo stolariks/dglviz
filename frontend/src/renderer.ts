@@ -3,6 +3,14 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { COLORMAPS, type ColormapName } from './colormap';
 import type { QueryResponse } from './types';
 
+export interface RenderOptions {
+  nodeCm: ColormapName;
+  edgeCm: ColormapName;
+  pointSize: number;
+  nodeOpacity: number;
+  edgeOpacity: number;
+}
+
 export class GraphRenderer {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
@@ -70,13 +78,14 @@ export class GraphRenderer {
     this.lines = null;
   }
 
-  update(data: QueryResponse, cmName: ColormapName, pointSize: number): void {
+  update(data: QueryResponse, opts: RenderOptions): void {
     this._clear();
 
     const n = data.positions.length;
     if (n === 0) return;
 
-    const cm = COLORMAPS[cmName];
+    const nodeCm = COLORMAPS[opts.nodeCm];
+    const edgeCm = COLORMAPS[opts.edgeCm];
 
     // ── Point cloud ────────────────────────────────────────────────────────────
     const posArr = new Float32Array(n * 3);
@@ -89,7 +98,7 @@ export class GraphRenderer {
 
       let r: number, g: number, b: number;
       if (data.node_colors !== null) {
-        [r, g, b] = cm(data.node_colors[i]);
+        [r, g, b] = nodeCm(data.node_colors[i]);
       } else {
         [r, g, b] = [0.35, 0.65, 1.0];
       }
@@ -103,9 +112,11 @@ export class GraphRenderer {
     geo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
 
     const mat = new THREE.PointsMaterial({
-      size: pointSize,
+      size: opts.pointSize,
       vertexColors: true,
       sizeAttenuation: false,
+      opacity: opts.nodeOpacity,
+      transparent: opts.nodeOpacity < 1,
     });
 
     this.points = new THREE.Points(geo, mat);
@@ -131,7 +142,7 @@ export class GraphRenderer {
 
         let r: number, g: number, b: number;
         if (eColors !== null) {
-          [r, g, b] = cm(eColors[i]);
+          [r, g, b] = edgeCm(eColors[i]);
         } else {
           [r, g, b] = [0.4, 0.4, 0.5];
         }
@@ -145,7 +156,7 @@ export class GraphRenderer {
 
       const eMat = new THREE.LineBasicMaterial({
         vertexColors: true,
-        opacity: 0.55,
+        opacity: opts.edgeOpacity,
         transparent: true,
       });
 
@@ -162,7 +173,6 @@ export class GraphRenderer {
     this.axesHelper.scale.setScalar(maxDim * 0.15);
     this.axesHelper.position.copy(box.min);
 
-    // ── Auto-fit camera on first render ───────────────────────────────────────
     if (this.firstRender) {
       this.firstRender = false;
       this.fitCamera(box);
@@ -194,14 +204,23 @@ export class GraphRenderer {
     }
   }
 
-  setAxesVisible(v: boolean): void {
-    this.axesHelper.visible = v;
+  setNodeOpacity(v: number): void {
+    if (this.points) {
+      const mat = this.points.material as THREE.PointsMaterial;
+      mat.opacity = v;
+      mat.transparent = v < 1;
+      mat.needsUpdate = true;
+    }
   }
 
   setEdgeOpacity(v: number): void {
     if (this.lines) {
       (this.lines.material as THREE.LineBasicMaterial).opacity = v;
     }
+  }
+
+  setAxesVisible(v: boolean): void {
+    this.axesHelper.visible = v;
   }
 
   dispose(): void {
