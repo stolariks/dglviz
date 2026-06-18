@@ -422,6 +422,9 @@ export class GraphRenderer {
   setAxesVisible(v: boolean): void {
     this.gridVisible = v;
     if (this.axisGrid) this.axisGrid.visible = v;
+    // When hiding, do one final css2d render with the group invisible so the
+    // renderer removes its stale DOM label elements instead of leaving them behind.
+    if (!v) this.css2d.render(this.scene, this.camera);
   }
 
   dispose(): void {
