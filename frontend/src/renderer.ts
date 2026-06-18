@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { COLORMAPS, buildCategoricalMapper, type ColormapName } from './colormap';
-import type { QueryResponse } from './types';
+import type { QueryResponse, CameraState } from './types';
 
 export interface RenderOptions {
   nodeCm: ColormapName;
@@ -417,6 +417,28 @@ export class GraphRenderer {
     }
 
     return url;
+  }
+
+  getCameraState(): CameraState {
+    const p = this.camera.position;
+    const t = this.controls.target;
+    return {
+      position: [p.x, p.y, p.z],
+      target:   [t.x, t.y, t.z],
+      near: this.camera.near,
+      far:  this.camera.far,
+      fov:  this.camera.fov,
+    };
+  }
+
+  setCameraState(s: CameraState): void {
+    this.camera.position.set(s.position[0], s.position[1], s.position[2]);
+    this.controls.target.set(s.target[0], s.target[1], s.target[2]);
+    this.camera.near = s.near;
+    this.camera.far  = s.far;
+    this.camera.fov  = s.fov;
+    this.camera.updateProjectionMatrix();
+    this.controls.update();
   }
 
   setBrightCanvas(bright: boolean): void {

@@ -9,10 +9,13 @@ from fastapi.staticfiles import StaticFiles
 
 import graph_store
 import graph_ops
-from models import QueryRequest, ROIConfig
+from models import QueryRequest, ROIConfig, CameraState
 
 ROI_PRESETS_DIR = Path(__file__).parent.parent / "presets"
 ROI_PRESETS_DIR.mkdir(exist_ok=True)
+
+CAMERA_PRESETS_DIR = Path(__file__).parent.parent / "presets" / "camera"
+CAMERA_PRESETS_DIR.mkdir(parents=True, exist_ok=True)
 
 _SAFE_NAME = re.compile(r'^[\w\- ]{1,64}$')
 
@@ -121,6 +124,38 @@ def delete_roi_preset(name: str):
     path = ROI_PRESETS_DIR / f"{name}.json"
     if not path.exists():
         raise HTTPException(404, f"ROI preset {name!r} not found")
+    path.unlink()
+    return {"deleted": name}
+
+
+# ── Camera presets ────────────────────────────────────────────────────────────
+
+@app.get("/api/camera-presets")
+def list_camera_presets():
+    return [{"name": f.stem} for f in sorted(CAMERA_PRESETS_DIR.glob("*.json"))]
+
+
+@app.get("/api/camera-presets/{name}")
+def get_camera_preset(name: str):
+    path = CAMERA_PRESETS_DIR / f"{name}.json"
+    if not path.exists():
+        raise HTTPException(404, f"Camera preset {name!r} not found")
+    return json.loads(path.read_text())
+
+
+@app.post("/api/camera-presets/{name}")
+def save_camera_preset(name: str, cam: CameraState):
+    if not _SAFE_NAME.match(name):
+        raise HTTPException(400, "Preset name may only contain letters, digits, hyphens, underscores and spaces (max 64 chars)")
+    (CAMERA_PRESETS_DIR / f"{name}.json").write_text(cam.model_dump_json(indent=2))
+    return {"saved": name}
+
+
+@app.delete("/api/camera-presets/{name}")
+def delete_camera_preset(name: str):
+    path = CAMERA_PRESETS_DIR / f"{name}.json"
+    if not path.exists():
+        raise HTTPException(404, f"Camera preset {name!r} not found")
     path.unlink()
     return {"deleted": name}
 

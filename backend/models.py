@@ -3,6 +3,14 @@ from pydantic import BaseModel, Field
 from typing import Optional, Literal
 
 
+class CameraState(BaseModel):
+    position: list[float]  # [x, y, z]
+    target:   list[float]  # [x, y, z]
+    near: float
+    far:  float
+    fov:  float
+
+
 class PositionSource(BaseModel):
     key: str = "feat"
     x_col: int = 0

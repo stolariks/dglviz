@@ -1021,6 +1021,71 @@ function buildRenderSection(): HTMLElement {
   fitBtn.addEventListener('click', () => renderer.fitCamera());
   body.appendChild(fitBtn);
 
+  // Camera presets
+  const camPresetDiv = document.createElement('div');
+  camPresetDiv.style.cssText = 'display:flex;flex-direction:column;gap:5px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)';
+
+  const camNameInp = document.createElement('input');
+  camNameInp.type = 'text';
+  camNameInp.placeholder = 'Camera preset name…';
+  camNameInp.className = 'flex-1';
+
+  const camSaveBtn = document.createElement('button');
+  camSaveBtn.className = 'btn-sm';
+  camSaveBtn.textContent = 'Save';
+  camSaveBtn.addEventListener('click', async () => {
+    const name = camNameInp.value.trim();
+    if (!name) { toast('Enter a preset name', true); return; }
+    try {
+      await api.saveCameraPreset(name, renderer.getCameraState());
+      toast(`Saved "${name}"`);
+      await refreshCamList();
+    } catch (e) { toast(String(e), true); }
+  });
+  camPresetDiv.appendChild(row('Save as', camNameInp, camSaveBtn));
+
+  const camSel = makeSelect([], '', () => {});
+
+  async function refreshCamList() {
+    const presets = await api.listCameraPresets();
+    camSel.innerHTML = '';
+    for (const p of presets) {
+      const opt = document.createElement('option');
+      opt.value = opt.textContent = p.name;
+      camSel.appendChild(opt);
+    }
+  }
+  refreshCamList();
+
+  const camLoadBtn = document.createElement('button');
+  camLoadBtn.className = 'btn-sm';
+  camLoadBtn.textContent = 'Load';
+  camLoadBtn.addEventListener('click', async () => {
+    const name = camSel.value;
+    if (!name) return;
+    try {
+      const state = await api.getCameraPreset(name);
+      renderer.setCameraState(state);
+    } catch (e) { toast(String(e), true); }
+  });
+
+  const camDelBtn = document.createElement('button');
+  camDelBtn.className = 'btn-danger';
+  camDelBtn.textContent = '✕';
+  camDelBtn.title = 'Delete preset';
+  camDelBtn.addEventListener('click', async () => {
+    const name = camSel.value;
+    if (!name) return;
+    try {
+      await api.deleteCameraPreset(name);
+      toast(`Deleted "${name}"`);
+      await refreshCamList();
+    } catch (e) { toast(String(e), true); }
+  });
+
+  camPresetDiv.appendChild(row('Preset', camSel, camLoadBtn, camDelBtn));
+  body.appendChild(camPresetDiv);
+
   // Screenshot
   const scaleOpts = ['1×', '2×', '4×'];
   let screenshotScale = 2;

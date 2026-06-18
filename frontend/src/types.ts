@@ -1,3 +1,11 @@
+export interface CameraState {
+  position: [number, number, number];
+  target:   [number, number, number];
+  near: number;
+  far:  number;
+  fov:  number;
+}
+
 export interface FileEntry {
   name: string;
   size_mb: number;

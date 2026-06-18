@@ -1,4 +1,4 @@
-import type { FileEntry, GraphInfo, QueryRequest, QueryResponse, ROIConfig } from './types';
+import type { FileEntry, GraphInfo, QueryRequest, QueryResponse, ROIConfig, CameraState } from './types';
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -56,4 +56,16 @@ export const api = {
 
   deleteRoiPreset: (name: string) =>
     request<{ deleted: string }>('DELETE', `/api/roi-presets/${encodeURIComponent(name)}`),
+
+  listCameraPresets: () =>
+    request<{ name: string }[]>('GET', '/api/camera-presets'),
+
+  getCameraPreset: (name: string) =>
+    request<CameraState>('GET', `/api/camera-presets/${encodeURIComponent(name)}`),
+
+  saveCameraPreset: (name: string, cam: CameraState) =>
+    request<{ saved: string }>('POST', `/api/camera-presets/${encodeURIComponent(name)}`, cam),
+
+  deleteCameraPreset: (name: string) =>
+    request<{ deleted: string }>('DELETE', `/api/camera-presets/${encodeURIComponent(name)}`),
 };
