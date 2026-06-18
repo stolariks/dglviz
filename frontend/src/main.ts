@@ -1034,7 +1034,7 @@ function buildRenderSection(): HTMLElement {
   shotBtn.addEventListener('click', async () => {
     shotBtn.disabled = true;
     try {
-      const name = activeGraph ? activeGraph.replace('.dgl', '') : 'dglviz';
+      const name = activeGraph ? activeGraph.replace('.dgl', '') : 'femsur_graphviz';
       const url = await captureFullScreenshot(screenshotScale, screenshotTransparent);
       downloadURL(url, `${name}_${Date.now()}.png`);
     } finally {
