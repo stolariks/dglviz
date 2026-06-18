@@ -1009,6 +1009,10 @@ function buildRenderSection(): HTMLElement {
   const [details, body] = makeSection('Render options', false);
 
   body.appendChild(makeCheckbox(false, 'Show axis grid', (v) => renderer.setAxesVisible(v)));
+  body.appendChild(makeCheckbox(false, 'Bright canvas', (v) => {
+    renderer.setBrightCanvas(v);
+    document.getElementById('viewport')!.classList.toggle('bright-canvas', v);
+  }));
 
   const fitBtn = document.createElement('button');
   fitBtn.className = 'btn-sm';

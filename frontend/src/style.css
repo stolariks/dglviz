@@ -499,6 +499,40 @@ button {
 #toast.error { background: var(--btn-danger); }
 #toast.visible { opacity: 1; }
 
+/* ── Bright canvas overrides ─────────────────────────────────────────────────── */
+
+#viewport.bright-canvas { background: #f0f2f8; }
+
+#viewport.bright-canvas .axis-label {
+  color: rgba(30, 40, 80, 0.85);
+  background: rgba(240, 242, 248, 0.72);
+}
+
+#viewport.bright-canvas .axis-title {
+  color: rgba(20, 20, 60, 0.92);
+  background: rgba(240, 242, 248, 0.72);
+}
+
+#viewport.bright-canvas .cb-label {
+  color: rgba(25, 30, 70, 0.9);
+  text-shadow: 0 1px 3px rgba(255,255,255,0.8);
+}
+
+#viewport.bright-canvas .cb-title {
+  color: rgba(25, 30, 70, 0.9);
+  text-shadow: 0 1px 3px rgba(255,255,255,0.8);
+}
+
+#viewport.bright-canvas #colorbar-canvas {
+  border-color: rgba(80,80,120,0.25);
+}
+
+#viewport.bright-canvas #stats-bar {
+  background: rgba(240, 242, 248, 0.88);
+  border-color: rgba(180,185,210,0.5);
+  color: #1f2937;
+}
+
 /* ── Misc ────────────────────────────────────────────────────────────────────── */
 
 .sep { height: 1px; background: var(--border); margin: 4px 0; }

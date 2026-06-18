@@ -419,6 +419,10 @@ export class GraphRenderer {
     return url;
   }
 
+  setBrightCanvas(bright: boolean): void {
+    this.scene.background = new THREE.Color(bright ? 0xf0f2f8 : 0x0a0a18);
+  }
+
   setAxesVisible(v: boolean): void {
     this.gridVisible = v;
     if (this.axisGrid) this.axisGrid.visible = v;
