@@ -1,4 +1,4 @@
-import type { FileEntry, GraphInfo, QueryRequest, QueryResponse } from './types';
+import type { FileEntry, GraphInfo, QueryRequest, QueryResponse, ROIConfig } from './types';
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -44,4 +44,16 @@ export const api = {
 
   query: (name: string, req: QueryRequest) =>
     request<QueryResponse>('POST', `/api/graphs/${encodeURIComponent(name)}/query`, req),
+
+  listRoiPresets: () =>
+    request<{ name: string }[]>('GET', '/api/roi-presets'),
+
+  getRoiPreset: (name: string) =>
+    request<ROIConfig>('GET', `/api/roi-presets/${encodeURIComponent(name)}`),
+
+  saveRoiPreset: (name: string, roi: ROIConfig) =>
+    request<{ saved: string }>('POST', `/api/roi-presets/${encodeURIComponent(name)}`, roi),
+
+  deleteRoiPreset: (name: string) =>
+    request<{ deleted: string }>('DELETE', `/api/roi-presets/${encodeURIComponent(name)}`),
 };

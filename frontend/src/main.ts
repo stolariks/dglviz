@@ -3,8 +3,26 @@ import { GraphRenderer, type RenderOptions } from './renderer';
 import { drawColorbar, COLORMAP_NAMES, type ColormapName } from './colormap';
 import type {
   FileEntry, GraphInfo, FeatureInfo,
-  QueryRequest, FilterConfig, SimpleFilter, ROIBox, ROISphere,
+  QueryRequest, FilterConfig, SimpleFilter, ROIBox, ROISphere, ROIConfig,
 } from './types';
+
+interface VisualizationPreset {
+  version: 1;
+  graph_name: string;
+  query: QueryRequest;
+  render: {
+    nodeColormap: ColormapName;
+    edgeColormap: ColormapName;
+    pointSize: number;
+    nodeOpacity: number;
+    edgeOpacity: number;
+    solidNodeColor: string;
+    solidEdgeColor: string;
+    highlightColor: string;
+    highlightSize: number;
+    dimmedOpacity: number;
+  };
+}
 
 // ── Global state ──────────────────────────────────────────────────────────────
 
@@ -38,6 +56,20 @@ const queryReq: QueryRequest = {
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const renderer = new GraphRenderer(canvas);
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+
+function downloadURL(url: string, filename: string): void {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+}
+
+function downloadJSON(obj: unknown, filename: string): void {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  downloadURL(URL.createObjectURL(blob), filename);
+}
 
 // ── Toast notifications ───────────────────────────────────────────────────────
 
@@ -98,6 +130,73 @@ function updateEdgeColorbar(title: string, min: number, max: number): void {
 
 function hideEdgeColorbar(): void {
   document.getElementById('edge-colorbar')!.style.display = 'none';
+}
+
+// ── Screenshot helpers ────────────────────────────────────────────────────────
+
+async function captureFullScreenshot(scale: number, transparent: boolean): Promise<string> {
+  const vpEl = document.getElementById('viewport')!;
+  const vpRect = vpEl.getBoundingClientRect();
+  const W = Math.round(vpRect.width * scale);
+  const H = Math.round(vpRect.height * scale);
+
+  const webglUrl = renderer.captureScreenshot(scale, transparent);
+
+  const out = document.createElement('canvas');
+  out.width = W;
+  out.height = H;
+  const ctx = out.getContext('2d')!;
+
+  const img = new Image();
+  await new Promise<void>(res => { img.onload = () => res(); img.src = webglUrl; });
+  ctx.drawImage(img, 0, 0, W, H);
+
+  for (const barId of ['edge-colorbar', 'colorbar']) {
+    const bar = document.getElementById(barId);
+    if (!bar || bar.style.display === 'none') continue;
+    paintBarToCanvas(ctx, bar, vpRect, scale);
+  }
+
+  return out.toDataURL('image/png');
+}
+
+function paintBarToCanvas(
+  ctx: CanvasRenderingContext2D,
+  bar: HTMLElement,
+  vpRect: DOMRect,
+  scale: number,
+): void {
+  const gradCanvas = bar.querySelector('canvas') as HTMLCanvasElement | null;
+  if (gradCanvas) {
+    const r = gradCanvas.getBoundingClientRect();
+    ctx.drawImage(
+      gradCanvas,
+      (r.left - vpRect.left) * scale,
+      (r.top  - vpRect.top)  * scale,
+      r.width  * scale,
+      r.height * scale,
+    );
+  }
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.85)';
+  ctx.shadowBlur = 4 * scale;
+
+  for (const el of bar.querySelectorAll('.cb-label, .cb-title')) {
+    const e = el as HTMLElement;
+    const text = e.textContent?.trim();
+    if (!text) continue;
+    const r = e.getBoundingClientRect();
+    const cx = (r.left - vpRect.left + r.width / 2) * scale;
+    const cy = (r.top  - vpRect.top  + r.height / 2) * scale;
+    const fs = Math.max(8, Math.round(10 * scale));
+    ctx.font = `${e.classList.contains('cb-title') ? '600 ' : ''}${fs}px "Courier New", monospace`;
+    ctx.fillStyle = 'rgba(200,220,255,0.9)';
+    ctx.fillText(text, cx, cy);
+  }
+
+  ctx.shadowBlur = 0;
 }
 
 // ── DOM helpers ───────────────────────────────────────────────────────────────
@@ -488,6 +587,19 @@ async function renderFilesSection(files: FileEntry[]): Promise<void> {
   container.appendChild(details);
 }
 
+function resetQueryReq(): void {
+  queryReq.position_source = { key: 'feat', x_col: 0, y_col: 1, z_col: 2 };
+  queryReq.node_color = null;
+  queryReq.node_filter = { enabled: false, advanced: false, simple: null, expression: null };
+  queryReq.node_filter_mode = 'reduce';
+  queryReq.node_subsample_factor = 1;
+  queryReq.show_edges = false;
+  queryReq.edge_color = null;
+  queryReq.edge_filter = { enabled: false, advanced: false, simple: null, expression: null };
+  queryReq.edge_subsample_factor = 1;
+  queryReq.roi = { enabled: false, type: 'box', box: null, sphere: null };
+}
+
 async function handleFileClick(name: string, alreadyLoaded: boolean): Promise<void> {
   if (activeGraph === name) return;
 
@@ -497,6 +609,7 @@ async function handleFileClick(name: string, alreadyLoaded: boolean): Promise<vo
     activeGraph = name;
     graphInfo = info;
     toast(`Loaded ${name} — ${info.num_nodes.toLocaleString()} nodes, ${info.num_edges.toLocaleString()} edges`);
+    resetQueryReq();
     buildGraphControls(info);
     const fresh = await api.listFiles();
     await renderFilesSection(fresh);
@@ -510,26 +623,23 @@ async function handleFileClick(name: string, alreadyLoaded: boolean): Promise<vo
 // ── Graph controls ────────────────────────────────────────────────────────────
 
 function buildGraphControls(info: GraphInfo): void {
-  // Sensible defaults
+  // Set defaults (only when not already set from a preset load)
   const nkeys = Object.keys(info.ndata);
   const ekeys = Object.keys(info.edata);
 
   const defaultPosKey = nkeys.find(k => (info.ndata[k].num_cols ?? 1) >= 3) ?? nkeys[0] ?? 'feat';
-  queryReq.position_source = { key: defaultPosKey, x_col: 0, y_col: 1, z_col: 2 };
-
-  queryReq.node_color = nkeys.length > 0
-    ? { key: nkeys[0], index: info.ndata[nkeys[0]].is_vector ? 0 : null }
-    : null;
-
-  queryReq.edge_color = ekeys.length > 0
-    ? { key: ekeys[0], index: info.edata[ekeys[0]].is_vector ? 0 : null }
-    : null;
-
-  queryReq.node_filter = { enabled: false, advanced: false, simple: null, expression: null };
-  queryReq.node_filter_mode = 'reduce';
-  queryReq.edge_filter = { enabled: false, advanced: false, simple: null, expression: null };
-  queryReq.roi = { enabled: false, type: 'box', box: buildDefaultROIBox(info, queryReq.position_source.key, 0, 1, 2), sphere: null };
-  queryReq.show_edges = false;
+  if (!queryReq.position_source.key || !info.ndata[queryReq.position_source.key]) {
+    queryReq.position_source = { key: defaultPosKey, x_col: 0, y_col: 1, z_col: 2 };
+  }
+  if (queryReq.node_color === null && nkeys.length > 0) {
+    queryReq.node_color = { key: nkeys[0], index: info.ndata[nkeys[0]].is_vector ? 0 : null };
+  }
+  if (queryReq.edge_color === null && ekeys.length > 0) {
+    queryReq.edge_color = { key: ekeys[0], index: info.edata[ekeys[0]].is_vector ? 0 : null };
+  }
+  if (!queryReq.roi.box) {
+    queryReq.roi.box = buildDefaultROIBox(info, queryReq.position_source.key, 0, 1, 2);
+  }
 
   const gc = document.getElementById('graph-controls')!;
   gc.innerHTML = '';
@@ -550,8 +660,18 @@ function buildGraphControls(info: GraphInfo): void {
   gc.appendChild(buildEdgeSection(info));
   gc.appendChild(makeFilterSection('Edge filter', 'edge', queryReq.edge_filter));
   gc.appendChild(buildSamplingSection());
-  gc.appendChild(buildROISection(info));
+
+  // ROI section is wrapped so it can be rebuilt when a preset is loaded
+  const roiWrapper = document.createElement('div');
+  gc.appendChild(roiWrapper);
+  function rebuildRoi() {
+    roiWrapper.innerHTML = '';
+    roiWrapper.appendChild(buildROISection(info, rebuildRoi));
+  }
+  rebuildRoi();
+
   gc.appendChild(buildRenderSection());
+  gc.appendChild(buildPresetSection());
 
   const redrawBtn = document.createElement('button');
   redrawBtn.id = 'redraw-btn';
@@ -709,7 +829,7 @@ function buildSamplingSection(): HTMLElement {
   return details;
 }
 
-function buildROISection(info: GraphInfo): HTMLElement {
+function buildROISection(info: GraphInfo, rebuildSelf?: () => void): HTMLElement {
   const [details, body] = makeSection('ROI', false);
 
   // Enabled
@@ -813,6 +933,88 @@ function buildROISection(info: GraphInfo): HTMLElement {
   addSphRow('Radius', defSphere.radius, 'radius');
   roiBody.appendChild(sphereDiv);
 
+  // ── ROI presets ─────────────────────────────────────────────────────────────
+  const presetDiv = document.createElement('div');
+  presetDiv.style.cssText = 'display:flex;flex-direction:column;gap:5px;margin-top:4px;padding-top:6px;border-top:1px solid var(--border)';
+
+  // Save row
+  const saveNameInp = document.createElement('input');
+  saveNameInp.type = 'text';
+  saveNameInp.placeholder = 'Preset name…';
+  saveNameInp.className = 'flex-1';
+
+  const savePresetBtn = document.createElement('button');
+  savePresetBtn.className = 'btn-sm';
+  savePresetBtn.textContent = 'Save';
+  savePresetBtn.addEventListener('click', async () => {
+    const name = saveNameInp.value.trim();
+    if (!name) { toast('Enter a preset name', true); return; }
+    try {
+      await api.saveRoiPreset(name, queryReq.roi as ROIConfig);
+      toast(`ROI preset "${name}" saved`);
+      saveNameInp.value = '';
+      await refreshPresetList();
+    } catch (e) { toast(String(e), true); }
+  });
+
+  const saveRow = row('Save as', saveNameInp, savePresetBtn);
+  presetDiv.appendChild(saveRow);
+
+  // Load / delete row
+  const presetSel = document.createElement('select');
+  presetSel.className = 'flex-1';
+  const emptyOpt = document.createElement('option');
+  emptyOpt.value = ''; emptyOpt.textContent = '— select preset —';
+  presetSel.appendChild(emptyOpt);
+
+  async function refreshPresetList() {
+    const current = presetSel.value;
+    while (presetSel.options.length > 1) presetSel.remove(1);
+    try {
+      const presets = await api.listRoiPresets();
+      for (const p of presets) {
+        const opt = document.createElement('option');
+        opt.value = p.name; opt.textContent = p.name;
+        if (p.name === current) opt.selected = true;
+        presetSel.appendChild(opt);
+      }
+    } catch { /* backend may not be ready */ }
+  }
+  refreshPresetList();
+
+  const loadPresetBtn = document.createElement('button');
+  loadPresetBtn.className = 'btn-sm';
+  loadPresetBtn.textContent = 'Load';
+  loadPresetBtn.addEventListener('click', async () => {
+    const name = presetSel.value;
+    if (!name) return;
+    try {
+      const roi = await api.getRoiPreset(name);
+      queryReq.roi = roi;
+      rebuildSelf?.();
+      toast(`ROI preset "${name}" loaded`);
+    } catch (e) { toast(String(e), true); }
+  });
+
+  const delPresetBtn = document.createElement('button');
+  delPresetBtn.className = 'btn-danger btn-sm';
+  delPresetBtn.textContent = '×';
+  delPresetBtn.title = 'Delete preset';
+  delPresetBtn.addEventListener('click', async () => {
+    const name = presetSel.value;
+    if (!name) return;
+    if (!confirm(`Delete ROI preset "${name}"?`)) return;
+    try {
+      await api.deleteRoiPreset(name);
+      toast(`Deleted "${name}"`);
+      await refreshPresetList();
+    } catch (e) { toast(String(e), true); }
+  });
+
+  const loadRow = row('Preset', presetSel, loadPresetBtn, delPresetBtn);
+  presetDiv.appendChild(loadRow);
+  roiBody.appendChild(presetDiv);
+
   return details;
 }
 
@@ -827,6 +1029,140 @@ function buildRenderSection(): HTMLElement {
   fitBtn.style.marginTop = '4px';
   fitBtn.addEventListener('click', () => renderer.fitCamera());
   body.appendChild(fitBtn);
+
+  // Screenshot
+  const scaleOpts = ['1×', '2×', '4×'];
+  let screenshotScale = 2;
+  const scaleSel = makeSelect(scaleOpts, '2×', (v) => { screenshotScale = parseInt(v); });
+  scaleSel.style.width = '52px';
+  scaleSel.style.flex = 'unset';
+
+  let screenshotTransparent = false;
+  const transpCb = makeCheckbox(false, 'Transparent bg', (v) => { screenshotTransparent = v; });
+
+  const shotBtn = document.createElement('button');
+  shotBtn.className = 'btn-sm';
+  shotBtn.textContent = 'Screenshot';
+  shotBtn.style.marginTop = '4px';
+  shotBtn.addEventListener('click', async () => {
+    shotBtn.disabled = true;
+    try {
+      const name = activeGraph ? activeGraph.replace('.dgl', '') : 'dglviz';
+      const url = await captureFullScreenshot(screenshotScale, screenshotTransparent);
+      downloadURL(url, `${name}_${Date.now()}.png`);
+    } finally {
+      shotBtn.disabled = false;
+    }
+  });
+
+  const shotRow = row('', shotBtn, scaleSel);
+  shotRow.style.marginTop = '4px';
+  body.appendChild(shotRow);
+  body.appendChild(transpCb);
+
+  return details;
+}
+
+// ── Visualization presets (save / load JSON) ──────────────────────────────────
+
+function getRenderState() {
+  return { nodeColormap, edgeColormap, pointSize, nodeOpacity, edgeOpacity, solidNodeColor, solidEdgeColor, highlightColor, highlightSize, dimmedOpacity };
+}
+
+function savePreset(): void {
+  if (!activeGraph) { toast('No graph loaded', true); return; }
+  const preset: VisualizationPreset = {
+    version: 1,
+    graph_name: activeGraph,
+    query: JSON.parse(JSON.stringify(queryReq)),  // deep copy
+    render: getRenderState(),
+  };
+  downloadJSON(preset, `${activeGraph.replace('.dgl', '')}_preset.json`);
+}
+
+async function loadPreset(file: File): Promise<void> {
+  let preset: VisualizationPreset;
+  try {
+    preset = JSON.parse(await file.text());
+  } catch {
+    toast('Invalid preset file', true);
+    return;
+  }
+  if (preset.version !== 1) { toast('Unsupported preset version', true); return; }
+
+  // Restore render state
+  const r = preset.render;
+  nodeColormap = r.nodeColormap;
+  edgeColormap = r.edgeColormap;
+  pointSize    = r.pointSize;
+  nodeOpacity  = r.nodeOpacity;
+  edgeOpacity  = r.edgeOpacity;
+  solidNodeColor = r.solidNodeColor;
+  solidEdgeColor = r.solidEdgeColor;
+  highlightColor = r.highlightColor;
+  highlightSize  = r.highlightSize;
+  dimmedOpacity  = r.dimmedOpacity;
+
+  // Load graph if needed (or switch)
+  if (preset.graph_name !== activeGraph) {
+    setLoading(`Loading ${preset.graph_name}…`);
+    try {
+      const info = await api.loadGraph(preset.graph_name);
+      activeGraph = preset.graph_name;
+      graphInfo = info;
+      const fresh = await api.listFiles();
+      await renderFilesSection(fresh);
+    } catch (e) {
+      setLoading(false);
+      toast(`Could not load graph "${preset.graph_name}": ${e}`, true);
+      return;
+    }
+    setLoading(false);
+  }
+
+  if (!graphInfo) { toast('No graph available', true); return; }
+
+  // Apply preset query then rebuild UI with those values
+  Object.assign(queryReq, preset.query);
+  buildGraphControls(graphInfo);
+  await runQuery();
+  toast('Preset loaded');
+}
+
+function buildPresetSection(): HTMLElement {
+  const [details, body] = makeSection('Visualization preset', false);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn-sm';
+  saveBtn.textContent = 'Save preset';
+  saveBtn.addEventListener('click', savePreset);
+
+  const loadInput = document.createElement('input');
+  loadInput.type = 'file';
+  loadInput.accept = '.json';
+  loadInput.style.display = 'none';
+  const loadBtn = document.createElement('button');
+  loadBtn.className = 'btn-sm';
+  loadBtn.textContent = 'Load preset';
+  loadBtn.addEventListener('click', () => loadInput.click());
+  loadInput.addEventListener('change', async () => {
+    const f = loadInput.files?.[0];
+    if (!f) return;
+    loadInput.value = '';
+    await loadPreset(f);
+  });
+
+  const btnRow = row('');
+  btnRow.style.gap = '6px';
+  btnRow.appendChild(saveBtn);
+  btnRow.appendChild(loadBtn);
+  btnRow.appendChild(loadInput);
+  body.appendChild(btnRow);
+
+  const note = document.createElement('div');
+  note.style.cssText = 'font-size:10px;color:var(--text-dim);margin-top:4px';
+  note.textContent = 'Graph path is embedded in the preset. On load you can switch to a different file.';
+  body.appendChild(note);
 
   return details;
 }

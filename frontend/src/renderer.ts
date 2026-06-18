@@ -79,7 +79,7 @@ export class GraphRenderer {
     this.camera = new THREE.PerspectiveCamera(55, 1, 1e-4, 1e6);
     this.camera.position.set(0, 0, 10);
 
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     this.css2d = new CSS2DRenderer();
@@ -393,6 +393,30 @@ export class GraphRenderer {
 
   setEdgeOpacity(v: number): void {
     if (this.lines) (this.lines.material as THREE.LineBasicMaterial).opacity = v;
+  }
+
+  captureScreenshot(scale = 2, transparent = false): string {
+    const canvas = this.renderer.domElement;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+
+    const prevBg = this.scene.background;
+    if (transparent) {
+      this.scene.background = null;
+      this.renderer.setClearColor(0x000000, 0);
+    }
+
+    this.renderer.setSize(w * scale, h * scale, false);
+    this.renderer.render(this.scene, this.camera);
+    const url = canvas.toDataURL('image/png');
+    this.renderer.setSize(w, h, false);
+
+    if (transparent) {
+      this.scene.background = prevBg;
+      this.renderer.setClearColor(0x000000, 1);
+    }
+
+    return url;
   }
 
   setAxesVisible(v: boolean): void {
