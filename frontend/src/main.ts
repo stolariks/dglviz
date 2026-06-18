@@ -1223,8 +1223,34 @@ async function runQuery(): Promise<void> {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
+function initPresetBar(): void {
+  const bar = document.getElementById('preset-load-bar')!;
+  const [details, body] = makeSection('Visualization preset', false);
+
+  const loadInput = document.createElement('input');
+  loadInput.type = 'file';
+  loadInput.accept = '.json';
+  loadInput.style.display = 'none';
+
+  const loadBtn = document.createElement('button');
+  loadBtn.className = 'btn-sm';
+  loadBtn.textContent = 'Load preset';
+  loadBtn.addEventListener('click', () => loadInput.click());
+  loadInput.addEventListener('change', async () => {
+    const f = loadInput.files?.[0];
+    if (!f) return;
+    loadInput.value = '';
+    await loadPreset(f);
+  });
+
+  body.appendChild(loadBtn);
+  body.appendChild(loadInput);
+  bar.appendChild(details);
+}
+
 async function init(): Promise<void> {
   setStats('Select a graph file to begin.');
+  initPresetBar();
   try {
     const files = await api.listFiles();
     await renderFilesSection(files);
