@@ -1,4 +1,6 @@
 from __future__ import annotations
+import json
+import re
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
@@ -7,7 +9,12 @@ from fastapi.staticfiles import StaticFiles
 
 import graph_store
 import graph_ops
-from models import QueryRequest
+from models import QueryRequest, ROIConfig
+
+ROI_PRESETS_DIR = Path(__file__).parent.parent / "presets"
+ROI_PRESETS_DIR.mkdir(exist_ok=True)
+
+_SAFE_NAME = re.compile(r'^[\w\- ]{1,64}$')
 
 app = FastAPI(title="DGLViz")
 
@@ -84,6 +91,38 @@ def query_graph(name: str, req: QueryRequest):
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
+
+
+# ── ROI presets ───────────────────────────────────────────────────────────────
+
+@app.get("/api/roi-presets")
+def list_roi_presets():
+    return [{"name": f.stem} for f in sorted(ROI_PRESETS_DIR.glob("*.json"))]
+
+
+@app.get("/api/roi-presets/{name}")
+def get_roi_preset(name: str):
+    path = ROI_PRESETS_DIR / f"{name}.json"
+    if not path.exists():
+        raise HTTPException(404, f"ROI preset {name!r} not found")
+    return json.loads(path.read_text())
+
+
+@app.post("/api/roi-presets/{name}")
+def save_roi_preset(name: str, roi: ROIConfig):
+    if not _SAFE_NAME.match(name):
+        raise HTTPException(400, "Preset name may only contain letters, digits, hyphens, underscores and spaces (max 64 chars)")
+    (ROI_PRESETS_DIR / f"{name}.json").write_text(roi.model_dump_json(indent=2))
+    return {"saved": name}
+
+
+@app.delete("/api/roi-presets/{name}")
+def delete_roi_preset(name: str):
+    path = ROI_PRESETS_DIR / f"{name}.json"
+    if not path.exists():
+        raise HTTPException(404, f"ROI preset {name!r} not found")
+    path.unlink()
+    return {"deleted": name}
 
 
 # ── Serve built frontend ───────────────────────────────────────────────────────
