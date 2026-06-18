@@ -349,29 +349,29 @@ interface HighlightProps {
   setDimmedOpacity(v: number): void;
 }
 
-function makeFilterSection(
-  title: string,
+function appendFilterControls(
+  parent: HTMLElement,
   kind: 'node' | 'edge',
   cfg: FilterConfig,
   hl?: HighlightProps,
-): HTMLDetailsElement {
-  const [details, body] = makeSection(title, false);
-
+): void {
   const keys = kind === 'node' ? ndataKeys() : edataKeys();
 
-  // Enabled toggle
+  const sep = document.createElement('div');
+  sep.style.cssText = 'border-top:1px solid var(--border);margin:6px 0 2px';
+  parent.appendChild(sep);
+
   const enabledCb = makeCheckbox(cfg.enabled, 'Enable filter', (v) => {
     cfg.enabled = v;
     contentDiv.style.display = v ? 'flex' : 'none';
   });
-  body.appendChild(enabledCb);
+  parent.appendChild(enabledCb);
 
   const contentDiv = document.createElement('div');
   contentDiv.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:6px';
   contentDiv.style.display = cfg.enabled ? 'flex' : 'none';
-  body.appendChild(contentDiv);
+  parent.appendChild(contentDiv);
 
-  // ── Highlight / Reduce mode toggle (nodes only) ──────────────────────────
   if (hl) {
     const modeRow = document.createElement('div');
     modeRow.className = 'radio-group';
@@ -394,7 +394,6 @@ function makeFilterSection(
     }
     contentDiv.appendChild(modeRow);
 
-    // Highlight-specific config (color, size, dimmed opacity)
     const hlConfigDiv = document.createElement('div');
     hlConfigDiv.style.cssText = 'display:flex;flex-direction:column;gap:5px';
     hlConfigDiv.style.display = hl.getMode() === 'highlight' ? 'flex' : 'none';
@@ -407,7 +406,6 @@ function makeFilterSection(
     contentDiv.appendChild(hlConfigDiv);
   }
 
-  // Advanced toggle
   const advCb = makeCheckbox(cfg.advanced, 'Advanced (expression)', (v) => {
     cfg.advanced = v;
     simpleDiv.style.display = v ? 'none' : 'flex';
@@ -415,7 +413,6 @@ function makeFilterSection(
   });
   contentDiv.appendChild(advCb);
 
-  // ── Simple filter controls ────────────────────────────────────────────────
   const simpleDiv = document.createElement('div');
   simpleDiv.style.cssText = 'display:flex;flex-direction:column;gap:5px';
   simpleDiv.style.display = cfg.advanced ? 'none' : 'flex';
@@ -427,7 +424,6 @@ function makeFilterSection(
     value: 0,
   };
 
-  // key + index picker
   const featPicker = makeFeaturePicker(kind, '— key —', initSimple.key, initSimple.index, (k, idx) => {
     if (!cfg.simple) cfg.simple = { key: '', index: null, op: '>', value: 0 };
     cfg.simple.key = k ?? '';
@@ -435,7 +431,6 @@ function makeFilterSection(
   });
   simpleDiv.appendChild(row('Feature', featPicker));
 
-  // op + value
   const ops = ['<', '<=', '>', '>=', '==', '!='];
   const opSel = makeSelect(ops, initSimple.op, (v) => {
     if (!cfg.simple) cfg.simple = { key: '', index: null, op: '>', value: 0 };
@@ -460,14 +455,9 @@ function makeFilterSection(
   opRow.appendChild(valInp);
   simpleDiv.appendChild(opRow);
 
-  // Initialize cfg.simple
-  if (!cfg.simple) {
-    cfg.simple = { ...initSimple };
-  }
-
+  if (!cfg.simple) cfg.simple = { ...initSimple };
   contentDiv.appendChild(simpleDiv);
 
-  // ── Advanced filter (expression) ────────────────────────────────────────────
   const advDiv = document.createElement('div');
   advDiv.style.display = cfg.advanced ? 'flex' : 'none';
   advDiv.style.flexDirection = 'column';
@@ -488,8 +478,6 @@ function makeFilterSection(
   textarea.addEventListener('input', () => { cfg.expression = textarea.value; });
   advDiv.appendChild(textarea);
   contentDiv.appendChild(advDiv);
-
-  return details;
 }
 
 // ── Files section ─────────────────────────────────────────────────────────────
@@ -646,20 +634,6 @@ function buildGraphControls(info: GraphInfo): void {
   gc.style.display = 'block';
 
   gc.appendChild(buildPositionSection(info));
-  gc.appendChild(buildNodeColorSection(info));
-  gc.appendChild(makeFilterSection('Node filter', 'node', queryReq.node_filter, {
-    getMode:          () => queryReq.node_filter_mode,
-    setMode:          (v) => { queryReq.node_filter_mode = v; },
-    getColor:         () => highlightColor,
-    setColor:         (v) => { highlightColor = v; },
-    getSize:          () => highlightSize,
-    setSize:          (v) => { highlightSize = v; },
-    getDimmedOpacity: () => dimmedOpacity,
-    setDimmedOpacity: (v) => { dimmedOpacity = v; },
-  }));
-  gc.appendChild(buildEdgeSection(info));
-  gc.appendChild(makeFilterSection('Edge filter', 'edge', queryReq.edge_filter));
-  gc.appendChild(buildSamplingSection());
 
   // ROI section is wrapped so it can be rebuilt when a preset is loaded
   const roiWrapper = document.createElement('div');
@@ -670,6 +644,9 @@ function buildGraphControls(info: GraphInfo): void {
   }
   rebuildRoi();
 
+  gc.appendChild(buildNodesSection(info));
+  gc.appendChild(buildEdgesSection(info));
+  gc.appendChild(buildSamplingSection());
   gc.appendChild(buildRenderSection());
   gc.appendChild(buildPresetSection());
 
@@ -714,8 +691,9 @@ function buildPositionSection(info: GraphInfo): HTMLElement {
   return details;
 }
 
-function buildNodeColorSection(info: GraphInfo): HTMLElement {
-  const [details, body] = makeSection('Node color', true);
+function buildNodesSection(info: GraphInfo): HTMLElement {
+  const [details, body] = makeSection('Nodes', true);
+  void info;
 
   const hasFeature = queryReq.node_color !== null;
 
@@ -740,25 +718,34 @@ function buildNodeColorSection(info: GraphInfo): HTMLElement {
       solidRow.style.display = k ? 'none' : 'flex';
       cmRow.style.display = k ? 'flex' : 'none';
     });
-  body.appendChild(row('Feature', picker));
+  body.appendChild(row('Color by', picker));
   body.appendChild(solidRow);
   body.appendChild(cmRow);
-
-  body.appendChild(makeOpacityRow('Node opacity', nodeOpacity, (v) => {
+  body.appendChild(makeOpacityRow('Opacity', nodeOpacity, (v) => {
     nodeOpacity = v;
     renderer.setNodeOpacity(v);
   }));
-
-  body.appendChild(row('Point size',
+  body.appendChild(row('Size',
     makeNumInput(pointSize, 1, 20, 1, (v) => {
       pointSize = v;
       renderer.setPointSize(v);
     })));
 
+  appendFilterControls(body, 'node', queryReq.node_filter, {
+    getMode:          () => queryReq.node_filter_mode,
+    setMode:          (v) => { queryReq.node_filter_mode = v; },
+    getColor:         () => highlightColor,
+    setColor:         (v) => { highlightColor = v; },
+    getSize:          () => highlightSize,
+    setSize:          (v) => { highlightSize = v; },
+    getDimmedOpacity: () => dimmedOpacity,
+    setDimmedOpacity: (v) => { dimmedOpacity = v; },
+  });
+
   return details;
 }
 
-function buildEdgeSection(info: GraphInfo): HTMLElement {
+function buildEdgesSection(info: GraphInfo): HTMLElement {
   const [details, body] = makeSection('Edges', false);
 
   const enableCb = makeCheckbox(queryReq.show_edges, 'Show edges', (v) => {
@@ -793,27 +780,21 @@ function buildEdgeSection(info: GraphInfo): HTMLElement {
       });
     edgeBody.appendChild(row('Color by', picker));
   }
-
   edgeBody.appendChild(edgeSolidRow);
   edgeBody.appendChild(edgeCmRow);
-
-  edgeBody.appendChild(makeOpacityRow('Edge opacity', edgeOpacity, (v) => {
+  edgeBody.appendChild(makeOpacityRow('Opacity', edgeOpacity, (v) => {
     edgeOpacity = v;
     renderer.setEdgeOpacity(v);
   }));
 
-  const edgeFactorInp = makeNumInput(queryReq.edge_subsample_factor, 1, 1e9, 1, (v) => {
-    queryReq.edge_subsample_factor = Math.max(1, Math.round(v));
-  });
-  edgeFactorInp.title = '1 = all edges, 2 = 50%, 100 = 1%, …';
-  edgeBody.appendChild(row('Edge factor', edgeFactorInp));
+  appendFilterControls(edgeBody, 'edge', queryReq.edge_filter);
 
   body.appendChild(edgeBody);
   return details;
 }
 
 function buildSamplingSection(): HTMLElement {
-  const [details, body] = makeSection('Sampling', true);
+  const [details, body] = makeSection('Sampling', false);
 
   const hint = document.createElement('div');
   hint.style.cssText = 'font-size:10px;color:var(--text-dim);margin-bottom:2px';
@@ -823,8 +804,14 @@ function buildSamplingSection(): HTMLElement {
   const nodeFactorInp = makeNumInput(queryReq.node_subsample_factor, 1, 1e9, 1, (v) => {
     queryReq.node_subsample_factor = Math.max(1, Math.round(v));
   });
-  nodeFactorInp.title = '1 = all nodes, 2 = 50%, N = keep 1/N of filtered nodes';
-  body.appendChild(row('Node factor', nodeFactorInp));
+  nodeFactorInp.title = '1 = all nodes, 2 = 50%, N = keep 1/N nodes';
+  body.appendChild(row('Nodes', nodeFactorInp));
+
+  const edgeFactorInp = makeNumInput(queryReq.edge_subsample_factor, 1, 1e9, 1, (v) => {
+    queryReq.edge_subsample_factor = Math.max(1, Math.round(v));
+  });
+  edgeFactorInp.title = '1 = all edges, 2 = 50%, N = keep 1/N edges';
+  body.appendChild(row('Edges', edgeFactorInp));
 
   return details;
 }
