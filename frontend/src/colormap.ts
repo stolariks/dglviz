@@ -19,18 +19,32 @@ function makeColormap(keys: KeyPoint[]): (t: number) => RGB {
   };
 }
 
-// tab10 — 10 perceptually distinct colours used for categorical mapping
+// tab10 — for non-negative integer categories
 export const CATEGORICAL_PALETTE: RGB[] = [
-  [0.122, 0.467, 0.706],  // blue
-  [1.000, 0.498, 0.055],  // orange
-  [0.173, 0.627, 0.173],  // green
-  [0.839, 0.153, 0.157],  // red
-  [0.580, 0.404, 0.741],  // purple
-  [0.549, 0.337, 0.294],  // brown
-  [0.890, 0.467, 0.761],  // pink
-  [0.498, 0.498, 0.498],  // gray
-  [0.737, 0.741, 0.133],  // yellow-green
-  [0.090, 0.745, 0.812],  // cyan
+  [0.122, 0.467, 0.706],
+  [1.000, 0.498, 0.055],
+  [0.173, 0.627, 0.173],
+  [0.839, 0.153, 0.157],
+  [0.580, 0.404, 0.741],
+  [0.549, 0.337, 0.294],
+  [0.890, 0.467, 0.761],
+  [0.498, 0.498, 0.498],
+  [0.737, 0.741, 0.133],
+  [0.090, 0.745, 0.812],
+];
+
+// High-contrast neon palette — for negative integer categories
+export const CATEGORICAL_PALETTE_NEG: RGB[] = [
+  [1.000, 0.000, 0.800],  // hot magenta
+  [1.000, 0.920, 0.000],  // bright yellow
+  [0.000, 1.000, 0.750],  // cyan-green
+  [1.000, 0.380, 0.000],  // hot orange
+  [0.400, 1.000, 0.000],  // lime
+  [0.000, 0.650, 1.000],  // electric blue
+  [1.000, 0.000, 0.380],  // hot pink
+  [0.900, 1.000, 0.000],  // yellow-lime
+  [0.000, 1.000, 0.380],  // spring green
+  [1.000, 0.500, 1.000],  // orchid
 ];
 
 export const COLORMAPS: Record<ColormapName, (t: number) => RGB> = {
@@ -93,6 +107,12 @@ export const COLORMAP_NAMES: ColormapName[] = ['jet', 'viridis', 'inferno', 'pla
  * and mapping each unique rounded integer to its own palette slot (by sorted rank).
  * Supports any integer values, not just 0-based indices; cycles after 10 categories.
  */
+/**
+ * Builds a categorical colormap function from actual data values.
+ * - Non-negative integers → tab10 palette (by ascending rank: 0, 1, 2, …)
+ * - Negative integers → high-contrast neon palette (by descending rank: -1, -2, …)
+ * Supports any sparse integer values; cycles after 10 per sign group.
+ */
 export function buildCategoricalMapper(
   normalizedValues: number[],
   colorRange: [number, number],
@@ -100,16 +120,26 @@ export function buildCategoricalMapper(
   const [vMin, vMax] = colorRange;
   const span = vMax - vMin;
 
-  const seen = new Set<number>();
-  for (const t of normalizedValues) seen.add(Math.round(t * span + vMin));
+  const negSeen = new Set<number>();
+  const posSeen = new Set<number>();
+  for (const t of normalizedValues) {
+    const raw = Math.round(t * span + vMin);
+    if (raw < 0) negSeen.add(raw); else posSeen.add(raw);
+  }
 
-  const rankMap = new Map(
-    Array.from(seen).sort((a, b) => a - b).map((v, i) => [v, i % CATEGORICAL_PALETTE.length])
+  // negatives: -1 first (rank 0), -2 second (rank 1), …
+  const negMap = new Map(
+    Array.from(negSeen).sort((a, b) => b - a).map((v, i) => [v, i % CATEGORICAL_PALETTE_NEG.length])
+  );
+  // non-negatives: 0 first, 1 second, …
+  const posMap = new Map(
+    Array.from(posSeen).sort((a, b) => a - b).map((v, i) => [v, i % CATEGORICAL_PALETTE.length])
   );
 
   return (t: number): RGB => {
     const raw = Math.round(t * span + vMin);
-    return CATEGORICAL_PALETTE[rankMap.get(raw) ?? 0];
+    if (raw < 0) return CATEGORICAL_PALETTE_NEG[negMap.get(raw) ?? 0];
+    return CATEGORICAL_PALETTE[posMap.get(raw) ?? 0];
   };
 }
 

@@ -17,11 +17,15 @@ let nodeOpacity = 1.0;
 let edgeOpacity = 0.55;
 let solidNodeColor = '#5aa6ff';
 let solidEdgeColor = '#666688';
+let highlightColor = '#ffff00';
+let highlightSize  = 6;
+let dimmedOpacity  = 0.12;
 
 const queryReq: QueryRequest = {
   position_source: { key: 'feat', x_col: 0, y_col: 1, z_col: 2 },
   node_color: null,
   node_filter: { enabled: false, advanced: false, simple: null, expression: null },
+  node_filter_mode: 'reduce' as const,
   node_subsample_factor: 1,
   show_edges: false,
   edge_color: null,
@@ -235,10 +239,22 @@ function makeOpacityRow(label: string, initial: number, onChange: (v: number) =>
 
 // ── Filter section builder ────────────────────────────────────────────────────
 
+interface HighlightProps {
+  getMode(): 'reduce' | 'highlight';
+  setMode(v: 'reduce' | 'highlight'): void;
+  getColor(): string;
+  setColor(v: string): void;
+  getSize(): number;
+  setSize(v: number): void;
+  getDimmedOpacity(): number;
+  setDimmedOpacity(v: number): void;
+}
+
 function makeFilterSection(
   title: string,
   kind: 'node' | 'edge',
   cfg: FilterConfig,
+  hl?: HighlightProps,
 ): HTMLDetailsElement {
   const [details, body] = makeSection(title, false);
 
@@ -247,17 +263,50 @@ function makeFilterSection(
   // Enabled toggle
   const enabledCb = makeCheckbox(cfg.enabled, 'Enable filter', (v) => {
     cfg.enabled = v;
-    contentDiv.style.display = v ? 'block' : 'none';
+    contentDiv.style.display = v ? 'flex' : 'none';
   });
   body.appendChild(enabledCb);
 
   const contentDiv = document.createElement('div');
-  contentDiv.style.display = cfg.enabled ? 'block' : 'none';
-  contentDiv.style.marginTop = '6px';
+  contentDiv.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:6px';
   contentDiv.style.display = cfg.enabled ? 'flex' : 'none';
-  contentDiv.style.flexDirection = 'column';
-  contentDiv.style.gap = '6px';
   body.appendChild(contentDiv);
+
+  // ── Highlight / Reduce mode toggle (nodes only) ──────────────────────────
+  if (hl) {
+    const modeRow = document.createElement('div');
+    modeRow.className = 'radio-group';
+    modeRow.style.marginBottom = '2px';
+
+    for (const m of ['reduce', 'highlight'] as const) {
+      const id = `filter-mode-${m}`;
+      const rb = document.createElement('input');
+      rb.type = 'radio'; rb.name = 'filter-mode'; rb.id = id; rb.value = m;
+      rb.checked = hl.getMode() === m;
+      rb.addEventListener('change', () => {
+        hl.setMode(m);
+        hlConfigDiv.style.display = m === 'highlight' ? 'flex' : 'none';
+      });
+      const lbl = document.createElement('label');
+      lbl.htmlFor = id;
+      lbl.appendChild(rb);
+      lbl.appendChild(document.createTextNode(' ' + m));
+      modeRow.appendChild(lbl);
+    }
+    contentDiv.appendChild(modeRow);
+
+    // Highlight-specific config (color, size, dimmed opacity)
+    const hlConfigDiv = document.createElement('div');
+    hlConfigDiv.style.cssText = 'display:flex;flex-direction:column;gap:5px';
+    hlConfigDiv.style.display = hl.getMode() === 'highlight' ? 'flex' : 'none';
+
+    hlConfigDiv.appendChild(makeColorPickerRow('Highlight color', hl.getColor(), (v) => hl.setColor(v)));
+    hlConfigDiv.appendChild(row('Highlight size',
+      makeNumInput(hl.getSize(), 1, 30, 1, (v) => hl.setSize(v))));
+    hlConfigDiv.appendChild(makeOpacityRow('Dimmed opacity', hl.getDimmedOpacity(), (v) => hl.setDimmedOpacity(v)));
+
+    contentDiv.appendChild(hlConfigDiv);
+  }
 
   // Advanced toggle
   const advCb = makeCheckbox(cfg.advanced, 'Advanced (expression)', (v) => {
@@ -477,6 +526,7 @@ function buildGraphControls(info: GraphInfo): void {
     : null;
 
   queryReq.node_filter = { enabled: false, advanced: false, simple: null, expression: null };
+  queryReq.node_filter_mode = 'reduce';
   queryReq.edge_filter = { enabled: false, advanced: false, simple: null, expression: null };
   queryReq.roi = { enabled: false, type: 'box', box: buildDefaultROIBox(info, queryReq.position_source.key, 0, 1, 2), sphere: null };
   queryReq.show_edges = false;
@@ -487,7 +537,16 @@ function buildGraphControls(info: GraphInfo): void {
 
   gc.appendChild(buildPositionSection(info));
   gc.appendChild(buildNodeColorSection(info));
-  gc.appendChild(makeFilterSection('Node filter', 'node', queryReq.node_filter));
+  gc.appendChild(makeFilterSection('Node filter', 'node', queryReq.node_filter, {
+    getMode:          () => queryReq.node_filter_mode,
+    setMode:          (v) => { queryReq.node_filter_mode = v; },
+    getColor:         () => highlightColor,
+    setColor:         (v) => { highlightColor = v; },
+    getSize:          () => highlightSize,
+    setSize:          (v) => { highlightSize = v; },
+    getDimmedOpacity: () => dimmedOpacity,
+    setDimmedOpacity: (v) => { dimmedOpacity = v; },
+  }));
   gc.appendChild(buildEdgeSection(info));
   gc.appendChild(makeFilterSection('Edge filter', 'edge', queryReq.edge_filter));
   gc.appendChild(buildSamplingSection());
@@ -784,7 +843,14 @@ async function runQuery(): Promise<void> {
   try {
     const result = await api.query(activeGraph, queryReq);
 
-    const opts: RenderOptions = { nodeCm: nodeColormap, edgeCm: edgeColormap, pointSize, nodeOpacity, edgeOpacity, solidNodeColor, solidEdgeColor };
+    const inHighlightMode = queryReq.node_filter.enabled && queryReq.node_filter_mode === 'highlight';
+    const opts: RenderOptions = {
+      nodeCm: nodeColormap, edgeCm: edgeColormap,
+      pointSize, nodeOpacity, edgeOpacity,
+      solidNodeColor, solidEdgeColor,
+      nodeFilterMask: inHighlightMode ? (result.node_filter_mask ?? null) : null,
+      highlightColor, highlightSize, dimmedOpacity,
+    };
     renderer.update(result, opts);
 
     const edgeInfo = result.edges.count > 0

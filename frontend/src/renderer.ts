@@ -12,6 +12,11 @@ export interface RenderOptions {
   edgeOpacity: number;
   solidNodeColor: string;
   solidEdgeColor: string;
+  // highlight mode — when nodeFilterMask is non-null, nodes are split into two draws
+  nodeFilterMask: boolean[] | null;
+  highlightColor: string;   // hex — solid color for nodes that pass the filter
+  highlightSize: number;    // point size for highlighted nodes
+  dimmedOpacity: number;    // opacity for nodes that don't pass the filter
 }
 
 function hexToRGB(hex: string): [number, number, number] {
@@ -59,6 +64,7 @@ export class GraphRenderer {
   private css2d: CSS2DRenderer;
   private controls: OrbitControls;
   private points: THREE.Points | null = null;
+  private pointsHighlight: THREE.Points | null = null;
   private lines: THREE.LineSegments | null = null;
   private axisGrid: THREE.Group | null = null;
   private gridVisible = false;
@@ -111,7 +117,7 @@ export class GraphRenderer {
   }
 
   private _clear(): void {
-    for (const obj of [this.points, this.lines]) {
+    for (const obj of [this.points, this.pointsHighlight, this.lines]) {
       if (!obj) continue;
       this.scene.remove(obj);
       obj.geometry.dispose();
@@ -119,6 +125,7 @@ export class GraphRenderer {
       else (obj.material as THREE.Material).dispose();
     }
     this.points = null;
+    this.pointsHighlight = null;
     this.lines = null;
   }
 
@@ -224,37 +231,86 @@ export class GraphRenderer {
         : COLORMAPS[opts.edgeCm];
 
     // ── Point cloud ──────────────────────────────────────────────────────────
-    const posArr = new Float32Array(n * 3);
-    const colArr = new Float32Array(n * 3);
+    const mask = opts.nodeFilterMask;
 
-    for (let i = 0; i < n; i++) {
-      posArr[i * 3]     = data.positions[i][0];
-      posArr[i * 3 + 1] = data.positions[i][1];
-      posArr[i * 3 + 2] = data.positions[i][2];
+    if (mask !== null) {
+      // Highlight mode: two separate point clouds — dimmed (background) + highlighted
+      const hlRGB = hexToRGB(opts.highlightColor);
 
-      let r: number, g: number, b: number;
-      if (data.node_colors !== null) {
-        [r, g, b] = nodeCm(data.node_colors[i]);
-      } else {
-        [r, g, b] = hexToRGB(opts.solidNodeColor);
+      // Count split
+      let nDim = 0, nHl = 0;
+      for (let i = 0; i < n; i++) mask[i] ? nHl++ : nDim++;
+
+      const dimPos = new Float32Array(nDim * 3), dimCol = new Float32Array(nDim * 3);
+      const hlPos  = new Float32Array(nHl  * 3), hlCol  = new Float32Array(nHl  * 3);
+      let di = 0, hi = 0;
+
+      for (let i = 0; i < n; i++) {
+        const px = data.positions[i][0], py = data.positions[i][1], pz = data.positions[i][2];
+        let r: number, g: number, b: number;
+        if (data.node_colors !== null) [r, g, b] = nodeCm(data.node_colors[i]);
+        else [r, g, b] = hexToRGB(opts.solidNodeColor);
+
+        if (mask[i]) {
+          hlPos[hi * 3] = px; hlPos[hi * 3 + 1] = py; hlPos[hi * 3 + 2] = pz;
+          hlCol[hi * 3] = hlRGB[0]; hlCol[hi * 3 + 1] = hlRGB[1]; hlCol[hi * 3 + 2] = hlRGB[2];
+          hi++;
+        } else {
+          dimPos[di * 3] = px; dimPos[di * 3 + 1] = py; dimPos[di * 3 + 2] = pz;
+          dimCol[di * 3] = r;  dimCol[di * 3 + 1] = g;  dimCol[di * 3 + 2] = b;
+          di++;
+        }
       }
-      colArr[i * 3]     = r;
-      colArr[i * 3 + 1] = g;
-      colArr[i * 3 + 2] = b;
+
+      // Dimmed background nodes
+      if (nDim > 0) {
+        const dimGeo = new THREE.BufferGeometry();
+        dimGeo.setAttribute('position', new THREE.BufferAttribute(dimPos, 3));
+        dimGeo.setAttribute('color',    new THREE.BufferAttribute(dimCol, 3));
+        this.points = new THREE.Points(dimGeo, new THREE.PointsMaterial({
+          size: opts.pointSize, vertexColors: true, sizeAttenuation: false,
+          opacity: opts.dimmedOpacity, transparent: true,
+        }));
+        this.scene.add(this.points);
+      }
+
+      // Highlighted nodes (drawn on top)
+      if (nHl > 0) {
+        const hlGeo = new THREE.BufferGeometry();
+        hlGeo.setAttribute('position', new THREE.BufferAttribute(hlPos, 3));
+        hlGeo.setAttribute('color',    new THREE.BufferAttribute(hlCol, 3));
+        this.pointsHighlight = new THREE.Points(hlGeo, new THREE.PointsMaterial({
+          size: opts.highlightSize, vertexColors: true, sizeAttenuation: false,
+          opacity: opts.nodeOpacity, transparent: opts.nodeOpacity < 1,
+        }));
+        this.scene.add(this.pointsHighlight);
+      }
+    } else {
+      // Normal (reduce) mode — single point cloud
+      const posArr = new Float32Array(n * 3);
+      const colArr = new Float32Array(n * 3);
+
+      for (let i = 0; i < n; i++) {
+        posArr[i * 3]     = data.positions[i][0];
+        posArr[i * 3 + 1] = data.positions[i][1];
+        posArr[i * 3 + 2] = data.positions[i][2];
+
+        let r: number, g: number, b: number;
+        if (data.node_colors !== null) [r, g, b] = nodeCm(data.node_colors[i]);
+        else [r, g, b] = hexToRGB(opts.solidNodeColor);
+        colArr[i * 3] = r; colArr[i * 3 + 1] = g; colArr[i * 3 + 2] = b;
+      }
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+      geo.setAttribute('color',    new THREE.BufferAttribute(colArr, 3));
+
+      this.points = new THREE.Points(geo, new THREE.PointsMaterial({
+        size: opts.pointSize, vertexColors: true, sizeAttenuation: false,
+        opacity: opts.nodeOpacity, transparent: opts.nodeOpacity < 1,
+      }));
+      this.scene.add(this.points);
     }
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
-    geo.setAttribute('color',    new THREE.BufferAttribute(colArr, 3));
-
-    this.points = new THREE.Points(geo, new THREE.PointsMaterial({
-      size: opts.pointSize,
-      vertexColors: true,
-      sizeAttenuation: false,
-      opacity: opts.nodeOpacity,
-      transparent: opts.nodeOpacity < 1,
-    }));
-    this.scene.add(this.points);
 
     // ── Edges ────────────────────────────────────────────────────────────────
     const ec = data.edges.count;
@@ -291,10 +347,14 @@ export class GraphRenderer {
       this.scene.add(this.lines);
     }
 
-    // ── Axis grid ────────────────────────────────────────────────────────────
-    const box = new THREE.Box3().setFromBufferAttribute(
-      geo.getAttribute('position') as THREE.BufferAttribute
-    );
+    // ── Axis grid (always from full positions set) ───────────────────────────
+    const allPos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      allPos[i * 3] = data.positions[i][0];
+      allPos[i * 3 + 1] = data.positions[i][1];
+      allPos[i * 3 + 2] = data.positions[i][2];
+    }
+    const box = new THREE.Box3().setFromArray(allPos);
     this.lastBox = box;
     this._buildGrid(box);
 
@@ -324,8 +384,9 @@ export class GraphRenderer {
   }
 
   setNodeOpacity(v: number): void {
-    if (this.points) {
-      const m = this.points.material as THREE.PointsMaterial;
+    for (const pts of [this.points, this.pointsHighlight]) {
+      if (!pts) continue;
+      const m = pts.material as THREE.PointsMaterial;
       m.opacity = v; m.transparent = v < 1; m.needsUpdate = true;
     }
   }
