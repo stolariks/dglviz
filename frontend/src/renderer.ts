@@ -373,8 +373,33 @@ export class GraphRenderer {
     const dist   = maxDim / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
     this.controls.target.copy(center);
     this.camera.position.copy(center).add(new THREE.Vector3(0, 0, dist * 1.4));
+    this.camera.up.set(0, 1, 0);
     this.camera.near = dist * 1e-4;
     this.camera.far  = dist * 100;
+    this.camera.updateProjectionMatrix();
+    this.controls.update();
+  }
+
+  setView(plane: 'xy' | 'xz' | 'yz'): void {
+    const b = this.lastBox;
+    if (!b) return;
+    const center = b.getCenter(new THREE.Vector3());
+    const size   = b.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z, 1e-6);
+    const dist   = maxDim / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
+    this.controls.target.copy(center);
+    this.camera.near = dist * 1e-4;
+    this.camera.far  = dist * 100;
+    if (plane === 'xy') {
+      this.camera.position.copy(center).add(new THREE.Vector3(0, 0, dist * 1.4));
+      this.camera.up.set(0, 1, 0);
+    } else if (plane === 'xz') {
+      this.camera.position.copy(center).add(new THREE.Vector3(0, dist * 1.4, 0));
+      this.camera.up.set(0, 0, 1);
+    } else {
+      this.camera.position.copy(center).add(new THREE.Vector3(dist * 1.4, 0, 0));
+      this.camera.up.set(0, 1, 0);
+    }
     this.camera.updateProjectionMatrix();
     this.controls.update();
   }

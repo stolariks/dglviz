@@ -1006,7 +1006,7 @@ function buildROISection(info: GraphInfo, rebuildSelf?: () => void): HTMLElement
 }
 
 function buildRenderSection(): HTMLElement {
-  const [details, body] = makeSection('Render options', false);
+  const [details, body] = makeSection('Render options', true);
 
   body.appendChild(makeCheckbox(false, 'Show axis grid', (v) => renderer.setAxesVisible(v)));
   body.appendChild(makeCheckbox(false, 'Bright canvas', (v) => {
@@ -1017,9 +1017,27 @@ function buildRenderSection(): HTMLElement {
   const fitBtn = document.createElement('button');
   fitBtn.className = 'btn-sm';
   fitBtn.textContent = 'Fit camera';
-  fitBtn.style.marginTop = '4px';
   fitBtn.addEventListener('click', () => renderer.fitCamera());
-  body.appendChild(fitBtn);
+
+  const viewsRow = document.createElement('div');
+  viewsRow.style.cssText = 'display:flex;gap:4px;margin-top:4px;align-items:center;';
+  const viewLabel = document.createElement('span');
+  viewLabel.textContent = 'View:';
+  viewLabel.style.cssText = 'font-size:11px;color:var(--text-dim);min-width:32px;';
+  viewsRow.appendChild(viewLabel);
+  for (const plane of ['XY', 'XZ', 'YZ'] as const) {
+    const btn = document.createElement('button');
+    btn.className = 'btn-sm';
+    btn.textContent = plane;
+    btn.style.cssText = 'flex:1;padding:2px 0;font-size:11px;';
+    btn.addEventListener('click', () => renderer.setView(plane.toLowerCase() as 'xy' | 'xz' | 'yz'));
+    viewsRow.appendChild(btn);
+  }
+  const fitRow = document.createElement('div');
+  fitRow.style.cssText = 'display:flex;gap:4px;margin-top:4px;';
+  fitRow.appendChild(fitBtn);
+  body.appendChild(viewsRow);
+  body.appendChild(fitRow);
 
   // Camera presets
   const camPresetDiv = document.createElement('div');
