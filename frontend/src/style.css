@@ -321,6 +321,17 @@ button {
   pointer-events: none;
 }
 
+#edge-colorbar {
+  position: absolute;
+  right: 110px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+}
+
 .cb-label {
   font-size: 10px;
   color: var(--text-dim);
@@ -341,6 +352,33 @@ button {
 #colorbar-canvas {
   border-radius: 3px;
   border: 1px solid var(--border);
+}
+
+/* ── Axis grid labels ────────────────────────────────────────────────────────── */
+
+.axis-label {
+  font-family: 'Fira Code', monospace;
+  font-size: 9px;
+  color: rgba(200, 220, 255, 0.75);
+  background: rgba(10, 10, 24, 0.55);
+  padding: 1px 3px;
+  border-radius: 2px;
+  pointer-events: none;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.axis-title {
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(10, 10, 24, 0.55);
+  padding: 1px 4px;
+  border-radius: 2px;
+  pointer-events: none;
+  white-space: nowrap;
+  user-select: none;
 }
 
 /* ── Loading overlay ─────────────────────────────────────────────────────────── */

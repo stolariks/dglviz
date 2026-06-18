@@ -1,6 +1,6 @@
 import { api } from './api';
-import { GraphRenderer } from './renderer';
-import { drawColorbar, type ColormapName } from './colormap';
+import { GraphRenderer, type RenderOptions } from './renderer';
+import { drawColorbar, COLORMAP_NAMES, type ColormapName } from './colormap';
 import type {
   FileEntry, GraphInfo, FeatureInfo,
   QueryRequest, FilterConfig, SimpleFilter, ROIBox, ROISphere,
@@ -10,13 +10,22 @@ import type {
 
 let activeGraph: string | null = null;
 let graphInfo: GraphInfo | null = null;
-let colormap: ColormapName = 'viridis';
+let nodeColormap: ColormapName = 'jet';
+let edgeColormap: ColormapName = 'jet';
 let pointSize = 2;
+let nodeOpacity = 1.0;
+let edgeOpacity = 0.55;
+let solidNodeColor = '#5aa6ff';
+let solidEdgeColor = '#666688';
+let highlightColor = '#ffff00';
+let highlightSize  = 6;
+let dimmedOpacity  = 0.12;
 
 const queryReq: QueryRequest = {
   position_source: { key: 'feat', x_col: 0, y_col: 1, z_col: 2 },
   node_color: null,
   node_filter: { enabled: false, advanced: false, simple: null, expression: null },
+  node_filter_mode: 'reduce' as const,
   node_subsample_factor: 1,
   show_edges: false,
   edge_color: null,
@@ -67,7 +76,7 @@ function updateColorbar(title: string, min: number, max: number): void {
   const bar = document.getElementById('colorbar')!;
   const cbCanvas = document.getElementById('colorbar-canvas') as HTMLCanvasElement;
   bar.style.display = 'flex';
-  drawColorbar(cbCanvas, colormap);
+  drawColorbar(cbCanvas, nodeColormap);
   document.getElementById('colorbar-max')!.textContent = max.toExponential(3);
   document.getElementById('colorbar-min')!.textContent = min.toExponential(3);
   document.getElementById('colorbar-title')!.textContent = title;
@@ -75,6 +84,20 @@ function updateColorbar(title: string, min: number, max: number): void {
 
 function hideColorbar(): void {
   document.getElementById('colorbar')!.style.display = 'none';
+}
+
+function updateEdgeColorbar(title: string, min: number, max: number): void {
+  const bar = document.getElementById('edge-colorbar')!;
+  const cbCanvas = document.getElementById('edge-colorbar-canvas') as HTMLCanvasElement;
+  bar.style.display = 'flex';
+  drawColorbar(cbCanvas, edgeColormap);
+  document.getElementById('edge-colorbar-max')!.textContent = max.toExponential(3);
+  document.getElementById('edge-colorbar-min')!.textContent = min.toExponential(3);
+  document.getElementById('edge-colorbar-title')!.textContent = title;
+}
+
+function hideEdgeColorbar(): void {
+  document.getElementById('edge-colorbar')!.style.display = 'none';
 }
 
 // ── DOM helpers ───────────────────────────────────────────────────────────────
@@ -190,12 +213,48 @@ function makeFeaturePicker(
   return wrap;
 }
 
+function makeColorPickerRow(label: string, initial: string, onChange: (v: string) => void): HTMLDivElement {
+  const r = row(label);
+  const inp = document.createElement('input');
+  inp.type = 'color';
+  inp.value = initial;
+  inp.style.flex = '1';
+  inp.style.height = '28px';
+  inp.style.cursor = 'pointer';
+  inp.addEventListener('input', () => onChange(inp.value));
+  r.appendChild(inp);
+  return r;
+}
+
+function makeOpacityRow(label: string, initial: number, onChange: (v: number) => void): HTMLDivElement {
+  const r = row(label);
+  const inp = document.createElement('input');
+  inp.type = 'range'; inp.min = '0'; inp.max = '1'; inp.step = '0.05';
+  inp.value = String(initial);
+  inp.style.flex = '1';
+  inp.addEventListener('input', () => onChange(Number(inp.value)));
+  r.appendChild(inp);
+  return r;
+}
+
 // ── Filter section builder ────────────────────────────────────────────────────
+
+interface HighlightProps {
+  getMode(): 'reduce' | 'highlight';
+  setMode(v: 'reduce' | 'highlight'): void;
+  getColor(): string;
+  setColor(v: string): void;
+  getSize(): number;
+  setSize(v: number): void;
+  getDimmedOpacity(): number;
+  setDimmedOpacity(v: number): void;
+}
 
 function makeFilterSection(
   title: string,
   kind: 'node' | 'edge',
   cfg: FilterConfig,
+  hl?: HighlightProps,
 ): HTMLDetailsElement {
   const [details, body] = makeSection(title, false);
 
@@ -204,17 +263,50 @@ function makeFilterSection(
   // Enabled toggle
   const enabledCb = makeCheckbox(cfg.enabled, 'Enable filter', (v) => {
     cfg.enabled = v;
-    contentDiv.style.display = v ? 'block' : 'none';
+    contentDiv.style.display = v ? 'flex' : 'none';
   });
   body.appendChild(enabledCb);
 
   const contentDiv = document.createElement('div');
-  contentDiv.style.display = cfg.enabled ? 'block' : 'none';
-  contentDiv.style.marginTop = '6px';
+  contentDiv.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:6px';
   contentDiv.style.display = cfg.enabled ? 'flex' : 'none';
-  contentDiv.style.flexDirection = 'column';
-  contentDiv.style.gap = '6px';
   body.appendChild(contentDiv);
+
+  // ── Highlight / Reduce mode toggle (nodes only) ──────────────────────────
+  if (hl) {
+    const modeRow = document.createElement('div');
+    modeRow.className = 'radio-group';
+    modeRow.style.marginBottom = '2px';
+
+    for (const m of ['reduce', 'highlight'] as const) {
+      const id = `filter-mode-${m}`;
+      const rb = document.createElement('input');
+      rb.type = 'radio'; rb.name = 'filter-mode'; rb.id = id; rb.value = m;
+      rb.checked = hl.getMode() === m;
+      rb.addEventListener('change', () => {
+        hl.setMode(m);
+        hlConfigDiv.style.display = m === 'highlight' ? 'flex' : 'none';
+      });
+      const lbl = document.createElement('label');
+      lbl.htmlFor = id;
+      lbl.appendChild(rb);
+      lbl.appendChild(document.createTextNode(' ' + m));
+      modeRow.appendChild(lbl);
+    }
+    contentDiv.appendChild(modeRow);
+
+    // Highlight-specific config (color, size, dimmed opacity)
+    const hlConfigDiv = document.createElement('div');
+    hlConfigDiv.style.cssText = 'display:flex;flex-direction:column;gap:5px';
+    hlConfigDiv.style.display = hl.getMode() === 'highlight' ? 'flex' : 'none';
+
+    hlConfigDiv.appendChild(makeColorPickerRow('Highlight color', hl.getColor(), (v) => hl.setColor(v)));
+    hlConfigDiv.appendChild(row('Highlight size',
+      makeNumInput(hl.getSize(), 1, 30, 1, (v) => hl.setSize(v))));
+    hlConfigDiv.appendChild(makeOpacityRow('Dimmed opacity', hl.getDimmedOpacity(), (v) => hl.setDimmedOpacity(v)));
+
+    contentDiv.appendChild(hlConfigDiv);
+  }
 
   // Advanced toggle
   const advCb = makeCheckbox(cfg.advanced, 'Advanced (expression)', (v) => {
@@ -373,6 +465,7 @@ async function renderFilesSection(files: FileEntry[]): Promise<void> {
           graphInfo = null;
           document.getElementById('graph-controls')!.style.display = 'none';
           hideColorbar();
+          hideEdgeColorbar();
           setStats('');
         }
         toast(`Deleted ${f.name}`);
@@ -433,6 +526,7 @@ function buildGraphControls(info: GraphInfo): void {
     : null;
 
   queryReq.node_filter = { enabled: false, advanced: false, simple: null, expression: null };
+  queryReq.node_filter_mode = 'reduce';
   queryReq.edge_filter = { enabled: false, advanced: false, simple: null, expression: null };
   queryReq.roi = { enabled: false, type: 'box', box: buildDefaultROIBox(info, queryReq.position_source.key, 0, 1, 2), sphere: null };
   queryReq.show_edges = false;
@@ -443,7 +537,16 @@ function buildGraphControls(info: GraphInfo): void {
 
   gc.appendChild(buildPositionSection(info));
   gc.appendChild(buildNodeColorSection(info));
-  gc.appendChild(makeFilterSection('Node filter', 'node', queryReq.node_filter));
+  gc.appendChild(makeFilterSection('Node filter', 'node', queryReq.node_filter, {
+    getMode:          () => queryReq.node_filter_mode,
+    setMode:          (v) => { queryReq.node_filter_mode = v; },
+    getColor:         () => highlightColor,
+    setColor:         (v) => { highlightColor = v; },
+    getSize:          () => highlightSize,
+    setSize:          (v) => { highlightSize = v; },
+    getDimmedOpacity: () => dimmedOpacity,
+    setDimmedOpacity: (v) => { dimmedOpacity = v; },
+  }));
   gc.appendChild(buildEdgeSection(info));
   gc.appendChild(makeFilterSection('Edge filter', 'edge', queryReq.edge_filter));
   gc.appendChild(buildSamplingSection());
@@ -494,25 +597,37 @@ function buildPositionSection(info: GraphInfo): HTMLElement {
 function buildNodeColorSection(info: GraphInfo): HTMLElement {
   const [details, body] = makeSection('Node color', true);
 
+  const hasFeature = queryReq.node_color !== null;
+
+  const solidRow = makeColorPickerRow('Solid color', solidNodeColor, (v) => { solidNodeColor = v; });
+  solidRow.style.display = hasFeature ? 'none' : 'flex';
+
+  const cmSelect = makeSelect(COLORMAP_NAMES, nodeColormap, (v) => {
+    nodeColormap = v as ColormapName;
+    const bar = document.getElementById('colorbar')!;
+    if (bar.style.display !== 'none') {
+      drawColorbar(document.getElementById('colorbar-canvas') as HTMLCanvasElement, nodeColormap);
+    }
+  });
+  const cmRow = row('Colormap', cmSelect);
+  cmRow.style.display = hasFeature ? 'flex' : 'none';
+
   const picker = makeFeaturePicker('node', '— none —',
     queryReq.node_color?.key ?? null,
     queryReq.node_color?.index ?? null,
     (k, idx) => {
       queryReq.node_color = k ? { key: k, index: idx } : null;
+      solidRow.style.display = k ? 'none' : 'flex';
+      cmRow.style.display = k ? 'flex' : 'none';
     });
   body.appendChild(row('Feature', picker));
+  body.appendChild(solidRow);
+  body.appendChild(cmRow);
 
-  const cmOpts: ColormapName[] = ['viridis', 'inferno', 'plasma', 'coolwarm'];
-  const cmSelect = makeSelect(cmOpts, colormap, (v) => {
-    colormap = v as ColormapName;
-    // Redraw colorbar if visible
-    const bar = document.getElementById('colorbar')!;
-    if (bar.style.display !== 'none') {
-      const cbCanvas = document.getElementById('colorbar-canvas') as HTMLCanvasElement;
-      drawColorbar(cbCanvas, colormap);
-    }
-  });
-  body.appendChild(row('Colormap', cmSelect));
+  body.appendChild(makeOpacityRow('Node opacity', nodeOpacity, (v) => {
+    nodeOpacity = v;
+    renderer.setNodeOpacity(v);
+  }));
 
   body.appendChild(row('Point size',
     makeNumInput(pointSize, 1, 20, 1, (v) => {
@@ -536,15 +651,36 @@ function buildEdgeSection(info: GraphInfo): HTMLElement {
   edgeBody.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:4px';
   edgeBody.style.display = queryReq.show_edges ? 'flex' : 'none';
 
+  const hasEdgeFeature = queryReq.edge_color !== null && Object.keys(info.edata).length > 0;
+
+  const edgeSolidRow = makeColorPickerRow('Solid color', solidEdgeColor, (v) => { solidEdgeColor = v; });
+  edgeSolidRow.style.display = hasEdgeFeature ? 'none' : 'flex';
+
+  const edgeCmSelect = makeSelect(COLORMAP_NAMES, edgeColormap, (v) => {
+    edgeColormap = v as ColormapName;
+  });
+  const edgeCmRow = row('Colormap', edgeCmSelect);
+  edgeCmRow.style.display = hasEdgeFeature ? 'flex' : 'none';
+
   if (Object.keys(info.edata).length > 0) {
     const picker = makeFeaturePicker('edge', '— none —',
       queryReq.edge_color?.key ?? null,
       queryReq.edge_color?.index ?? null,
       (k, idx) => {
         queryReq.edge_color = k ? { key: k, index: idx } : null;
+        edgeSolidRow.style.display = k ? 'none' : 'flex';
+        edgeCmRow.style.display = k ? 'flex' : 'none';
       });
     edgeBody.appendChild(row('Color by', picker));
   }
+
+  edgeBody.appendChild(edgeSolidRow);
+  edgeBody.appendChild(edgeCmRow);
+
+  edgeBody.appendChild(makeOpacityRow('Edge opacity', edgeOpacity, (v) => {
+    edgeOpacity = v;
+    renderer.setEdgeOpacity(v);
+  }));
 
   const edgeFactorInp = makeNumInput(queryReq.edge_subsample_factor, 1, 1e9, 1, (v) => {
     queryReq.edge_subsample_factor = Math.max(1, Math.round(v));
@@ -683,15 +819,7 @@ function buildROISection(info: GraphInfo): HTMLElement {
 function buildRenderSection(): HTMLElement {
   const [details, body] = makeSection('Render options', false);
 
-  body.appendChild(makeCheckbox(false, 'Show axes', (v) => renderer.setAxesVisible(v)));
-
-  const opacityRow = row('Edge opacity');
-  const opInp = document.createElement('input');
-  opInp.type = 'range'; opInp.min = '0'; opInp.max = '1'; opInp.step = '0.05'; opInp.value = '0.55';
-  opInp.style.flex = '1';
-  opInp.addEventListener('input', () => renderer.setEdgeOpacity(Number(opInp.value)));
-  opacityRow.appendChild(opInp);
-  body.appendChild(opacityRow);
+  body.appendChild(makeCheckbox(false, 'Show axis grid', (v) => renderer.setAxesVisible(v)));
 
   const fitBtn = document.createElement('button');
   fitBtn.className = 'btn-sm';
@@ -715,7 +843,15 @@ async function runQuery(): Promise<void> {
   try {
     const result = await api.query(activeGraph, queryReq);
 
-    renderer.update(result, colormap, pointSize);
+    const inHighlightMode = queryReq.node_filter.enabled && queryReq.node_filter_mode === 'highlight';
+    const opts: RenderOptions = {
+      nodeCm: nodeColormap, edgeCm: edgeColormap,
+      pointSize, nodeOpacity, edgeOpacity,
+      solidNodeColor, solidEdgeColor,
+      nodeFilterMask: inHighlightMode ? (result.node_filter_mask ?? null) : null,
+      highlightColor, highlightSize, dimmedOpacity,
+    };
+    renderer.update(result, opts);
 
     const edgeInfo = result.edges.count > 0
       ? ` · ${result.edges.count.toLocaleString()} / ${result.edges.total.toLocaleString()} edges`
@@ -731,6 +867,15 @@ async function runQuery(): Promise<void> {
       updateColorbar(title, result.node_color_range[0], result.node_color_range[1]);
     } else {
       hideColorbar();
+    }
+
+    if (result.edges.color_range && queryReq.edge_color) {
+      const title = queryReq.edge_color.index !== null
+        ? `${queryReq.edge_color.key}[${queryReq.edge_color.index}]`
+        : queryReq.edge_color.key;
+      updateEdgeColorbar(title, result.edges.color_range[0], result.edges.color_range[1]);
+    } else {
+      hideEdgeColorbar();
     }
   } catch (e) {
     toast(String(e), true);

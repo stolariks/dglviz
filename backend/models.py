@@ -56,6 +56,7 @@ class QueryRequest(BaseModel):
     position_source: PositionSource = Field(default_factory=PositionSource)
     node_color: Optional[FeatureSelector] = None
     node_filter: FilterConfig = Field(default_factory=FilterConfig)
+    node_filter_mode: Literal['reduce', 'highlight'] = 'reduce'
     node_subsample_factor: int = Field(default=1, ge=1)  # 1 = all nodes, N = keep 1/N
     show_edges: bool = False
     edge_color: Optional[FeatureSelector] = None

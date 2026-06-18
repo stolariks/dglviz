@@ -100,7 +100,10 @@ def query(name: str, req: QueryRequest) -> dict:
 
     # ── node filter ───────────────────────────────────────────────────────────
     fmask = _resolve_filter(g, req.node_filter, "node")
-    if fmask is not None:
+    # In 'reduce' mode, filter removes nodes from the display set.
+    # In 'highlight' mode, the filter only produces a per-node boolean mask returned
+    # to the frontend; all nodes in the ROI are still displayed.
+    if fmask is not None and req.node_filter_mode == 'reduce':
         mask &= fmask
 
     # ── subsample (last step after all filtering) ─────────────────────────────
@@ -110,6 +113,11 @@ def query(name: str, req: QueryRequest) -> dict:
     if n_to_show < num_after_filter:
         perm = torch.randperm(num_after_filter)[:n_to_show]
         node_indices = node_indices[perm]
+
+    # ── highlight mask (for frontend colouring in highlight mode) ─────────────
+    node_filter_mask_out = None
+    if fmask is not None and req.node_filter_mode == 'highlight':
+        node_filter_mask_out = fmask[node_indices].numpy().tolist()
 
     # ── node colors ───────────────────────────────────────────────────────────
     node_colors_norm = None
@@ -178,6 +186,7 @@ def query(name: str, req: QueryRequest) -> dict:
         "positions": sel_positions,
         "node_colors": node_colors_norm,
         "node_color_range": node_color_range,
+        "node_filter_mask": node_filter_mask_out,
         "node_ids": node_indices.numpy().tolist(),
         "edges": edges_out,
     }

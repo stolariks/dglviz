@@ -74,6 +74,7 @@ export interface QueryRequest {
   position_source: PositionSource;
   node_color: FeatureSelector | null;
   node_filter: FilterConfig;
+  node_filter_mode: 'reduce' | 'highlight';
   node_subsample_factor: number;  // 1 = all nodes, N = keep 1/N
   show_edges: boolean;
   edge_color: FeatureSelector | null;
@@ -97,6 +98,7 @@ export interface QueryResponse {
   positions: [number, number, number][];
   node_colors: number[] | null;
   node_color_range: [number, number] | null;
+  node_filter_mask: boolean[] | null;
   node_ids: number[];
   edges: EdgeResult;
 }
